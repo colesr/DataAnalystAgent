@@ -1,0 +1,3791 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Digital Data Analyst</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.1/dist/chartjs-chart-sankey.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --bg-2: #111;
+  --bg-3: #161616;
+  --border: #1f1f1f;
+  --border-strong: #2a2a2a;
+  --text: #ededed;
+  --muted: #737373;
+  --accent: #a78bfa;
+  --accent-soft: rgba(167, 139, 250, 0.08);
+  --success: #4ade80;
+  --warn: #facc15;
+  --err: #f87171;
+}
+* { box-sizing: border-box; }
+body {
+  font: 13px/1.5 -apple-system, system-ui, "SF Pro Text", "Inter", sans-serif;
+  background: var(--bg); color: var(--text);
+  margin: 0; min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 1100px; margin: auto; padding: 32px 24px 80px; }
+
+/* Header */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 20px; margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+header h1 {
+  font-size: 14px; font-weight: 600; margin: 0; letter-spacing: -0.005em;
+  color: var(--text); display: flex; align-items: center;
+}
+header h1::before {
+  content: ""; display: inline-block; width: 7px; height: 7px;
+  background: var(--accent); border-radius: 50%; margin-right: 10px;
+}
+.header-actions { display: flex; gap: 4px; }
+.icon-btn {
+  width: 28px; height: 28px; border-radius: 4px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--muted); cursor: pointer;
+  display: grid; place-items: center; font-size: 12px;
+  text-decoration: none; transition: all .12s;
+}
+.icon-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.icon-btn.active { color: var(--accent); border-color: var(--accent); }
+
+/* Cards */
+.card {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 16px; margin-bottom: 12px;
+}
+.card h3 {
+  margin: 0 0 12px; font-size: 10px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+  display: flex; align-items: center; gap: 8px;
+}
+.card h3 .badge {
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border); padding: 1px 6px;
+  border-radius: 3px; font-size: 10px;
+  text-transform: none; letter-spacing: 0; font-weight: 500;
+}
+.card h3 .right { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+
+/* Inputs */
+input, textarea, select {
+  width: 100%; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 8px 10px; font: inherit; font-size: 12px;
+  transition: border-color .12s;
+}
+select {
+  appearance: none; -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+                    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) center, calc(100% - 9px) center;
+  background-size: 5px 5px; background-repeat: no-repeat;
+  padding-right: 26px; cursor: pointer;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none; border-color: var(--accent);
+}
+textarea { min-height: 60px; resize: vertical; font-family: inherit; }
+textarea.code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+label.lbl {
+  font-size: 10px; color: var(--muted); display: block;
+  margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+
+/* Buttons */
+button.primary {
+  background: var(--accent); color: #0a0a0a; border: 0;
+  padding: 8px 16px; border-radius: 4px; cursor: pointer;
+  font: inherit; font-weight: 600; font-size: 12px; margin-top: 10px;
+  transition: opacity .12s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+button.primary:hover:not(:disabled) { opacity: 0.85; }
+button.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+button.ghost {
+  background: transparent; color: var(--muted); border: 1px solid var(--border);
+  padding: 5px 10px; font-size: 11px; border-radius: 4px; cursor: pointer;
+  margin: 2px 2px 0 0; font: inherit; transition: all .12s;
+}
+button.ghost:hover { color: var(--text); border-color: var(--border-strong); }
+button.ghost.danger:hover { color: var(--err); border-color: var(--err); }
+button.ghost.tiny { padding: 3px 7px; font-size: 10px; margin-top: 0; }
+
+/* Upload zone */
+.upload-zone {
+  display: block; border: 1px dashed var(--border-strong); border-radius: 4px;
+  padding: 22px; text-align: center; cursor: pointer;
+  transition: border-color .12s, background .12s;
+  color: var(--muted); font-size: 12px;
+}
+.upload-zone:hover, .upload-zone.drag {
+  border-color: var(--accent); background: var(--accent-soft);
+  color: var(--text);
+}
+.upload-zone input { display: none; }
+
+/* Tabs - underline style */
+nav.tabs {
+  display: flex; gap: 0; margin-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+nav.tabs button {
+  background: transparent; color: var(--muted); border: 0;
+  padding: 10px 14px; cursor: pointer; font: inherit;
+  font-size: 12px; font-weight: 500;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+  transition: color .12s, border-color .12s;
+  white-space: nowrap;
+}
+nav.tabs button:hover { color: var(--text); }
+nav.tabs button.active {
+  color: var(--text); border-bottom-color: var(--accent);
+}
+.tab-panel { animation: fadeIn .18s ease; }
+.tab-panel[hidden] { display: none; }
+
+/* Profile */
+.profile-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px;
+}
+.profile-col {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+  padding: 10px 12px; position: relative; cursor: pointer;
+  transition: border-color .12s;
+}
+.profile-col:hover { border-color: var(--border-strong); }
+.profile-col .name {
+  font-weight: 500; font-size: 12px; color: var(--text);
+}
+.profile-col .type {
+  display: inline-block; font-size: 9px; padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  color: var(--muted); border-radius: 3px; margin-left: 6px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.profile-col .stat {
+  display: flex; justify-content: space-between; font-size: 10px;
+  color: var(--muted); margin-top: 3px;
+}
+.profile-col .stat span:last-child {
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+.bar {
+  height: 2px; background: var(--border); border-radius: 1px;
+  overflow: hidden; margin-top: 4px;
+}
+.bar > div { height: 100%; background: var(--accent); }
+.flag {
+  position: absolute; top: 6px; right: 6px; font-size: 9px;
+  padding: 0 5px; border-radius: 3px; font-weight: 500;
+}
+.flag.warn { background: rgba(250,204,21,0.1); color: var(--warn); border: 1px solid rgba(250,204,21,0.3); }
+.flag.err  { background: rgba(248,113,113,0.1); color: var(--err); border: 1px solid rgba(248,113,113,0.3); }
+.flag.key  { background: rgba(74,222,128,0.1); color: var(--success); border: 1px solid rgba(74,222,128,0.3); }
+
+/* Cleaning panel */
+.col-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; margin-bottom: 4px;
+}
+.col-row .col-name { flex: 1; font-weight: 500; font-size: 12px; }
+.col-row .col-type { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+.col-row .col-actions { display: flex; gap: 3px; flex-wrap: wrap; }
+
+/* Trace + report */
+.trace-step {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: 4px;
+  padding: 10px 12px; margin-bottom: 6px;
+  animation: fadeIn .18s ease;
+}
+.trace-step.tool-sql { border-left-color: var(--text); }
+.trace-step.tool-py  { border-left-color: var(--success); }
+.trace-step.err      { border-left-color: var(--err); }
+.trace-step .label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 500; color: var(--muted); margin-bottom: 6px;
+}
+.trace-step .label .tag {
+  background: transparent; border: 1px solid var(--accent);
+  padding: 0 5px; border-radius: 3px; font-size: 9px;
+  color: var(--accent); font-weight: 600;
+}
+.trace-step pre {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 3px;
+  padding: 8px; margin: 0; font-size: 11px; overflow: auto;
+  white-space: pre-wrap; word-break: break-word; max-height: 280px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.result-table {
+  width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 6px;
+}
+.result-table th, .result-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 8px; text-align: left;
+}
+.result-table th {
+  font-weight: 600; color: var(--muted); text-transform: uppercase;
+  font-size: 9px; letter-spacing: 0.04em;
+}
+
+.spinner {
+  display: inline-block; width: 12px; height: 12px;
+  border: 1.5px solid rgba(255,255,255,.2); border-top-color: #0a0a0a;
+  border-radius: 50%; animation: spin .7s linear infinite;
+  vertical-align: middle;
+}
+.thinking-pulse {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted); animation: pulse 1s ease-in-out infinite;
+  margin-right: 3px;
+}
+.thinking-pulse:nth-child(2) { animation-delay: .15s; }
+.thinking-pulse:nth-child(3) { animation-delay: .3s; }
+
+/* Report */
+#report .headline {
+  font-size: 14px; font-weight: 500; line-height: 1.5;
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: 4px; margin-bottom: 14px;
+}
+#report h4 {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); margin: 16px 0 8px; font-weight: 600;
+}
+#summary p { margin: 6px 0; }
+#summary ul { margin: 4px 0 6px 18px; }
+#summary code {
+  background: var(--bg); border: 1px solid var(--border);
+  padding: 0 4px; border-radius: 3px; font-size: 11px;
+}
+
+.hypothesis-list { list-style: none; padding: 0; margin: 0; }
+.hypothesis-list li {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 12px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; margin-bottom: 4px;
+}
+.hyp-status {
+  flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 700;
+}
+.hyp-status.confirmed   { background: rgba(74,222,128,0.15); color: var(--success); }
+.hyp-status.refuted     { background: rgba(248,113,113,0.15); color: var(--err); }
+.hyp-status.inconclusive{ background: rgba(250,204,21,0.15); color: var(--warn); }
+.hyp-text { flex: 1; }
+.hyp-text .stmt { font-weight: 500; font-size: 12px; }
+.hyp-text .ev { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+.cite {
+  display: inline-block; background: transparent; border: 1px solid var(--accent);
+  color: var(--accent); padding: 0 5px; border-radius: 3px;
+  font-size: 10px; font-weight: 600; cursor: pointer;
+  text-decoration: none; margin: 0 2px; vertical-align: middle;
+  transition: all .12s;
+}
+.cite:hover { background: var(--accent); color: #0a0a0a; }
+.trace-step.highlight { animation: highlight 1.4s ease; }
+
+.charts-grid { display: grid; gap: 10px; margin-top: 12px; grid-template-columns: 1fr; }
+.charts-grid.two { grid-template-columns: 1fr 1fr; }
+@media (max-width: 720px) { .charts-grid.two { grid-template-columns: 1fr; } }
+.chart-wrap {
+  background: white; padding: 12px; border-radius: 4px;
+}
+
+/* Saved analyses */
+.saved-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; margin-bottom: 4px;
+}
+.saved-row .name { flex: 1; font-weight: 500; font-size: 12px; }
+.saved-row .meta { color: var(--muted); font-size: 10px; margin-top: 2px; }
+
+/* Modal */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: grid; place-items: center; z-index: 500;
+  animation: fadeIn .15s ease;
+}
+.modal {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 20px;
+  max-width: 640px; width: 90%; max-height: 85vh; overflow: auto;
+}
+.modal h3 {
+  margin: 0 0 14px; font-size: 13px; font-weight: 600;
+  display: flex; align-items: center;
+}
+.modal h3 .close {
+  margin-left: auto; cursor: pointer; color: var(--muted);
+  background: transparent; border: 0; font-size: 20px; line-height: 1;
+  padding: 0 4px;
+}
+.modal h3 .close:hover { color: var(--text); }
+.stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px; margin-bottom: 12px;
+}
+.stat-grid > div {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 8px 10px;
+}
+.stat-grid .lbl {
+  font-size: 9px; text-transform: uppercase; color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.stat-grid .val {
+  font-size: 14px; font-weight: 600; margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Correlation heatmap */
+.corr-table { border-collapse: collapse; font-size: 10px; }
+.corr-table th, .corr-table td {
+  padding: 6px 9px; text-align: center;
+  border: 1px solid var(--border);
+}
+.corr-table th {
+  background: var(--bg); font-weight: 600;
+  color: var(--muted); text-transform: uppercase;
+  font-size: 9px; letter-spacing: 0.04em;
+}
+.corr-cell { font-variant-numeric: tabular-nums; font-weight: 500; }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 20px; right: 20px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  padding: 10px 14px; border-radius: 4px;
+  font-size: 12px;
+  animation: toastIn .2s ease, toastOut .2s ease 2.7s forwards;
+  z-index: 100; max-width: 300px;
+}
+.toast.success { border-left-color: var(--success); }
+.toast.err     { border-left-color: var(--err); }
+.toast.info    { border-left-color: var(--accent); }
+
+/* Query history */
+.qh-row {
+  display: flex; gap: 8px; padding: 6px 10px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 3px; margin-bottom: 3px; font-size: 11px;
+  cursor: pointer; transition: border-color .12s;
+}
+.qh-row:hover { border-color: var(--border-strong); }
+.qh-row .qh-time { color: var(--muted); font-size: 10px; flex-shrink: 0; }
+.qh-row .qh-source {
+  font-size: 9px; padding: 0 5px; border-radius: 3px;
+  background: var(--bg-3); color: var(--muted); flex-shrink: 0;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.qh-row .qh-sql {
+  flex: 1; font-family: ui-monospace, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--text);
+}
+
+/* Tools section internal headings */
+.tool-section { margin-bottom: 8px; }
+.tool-result { margin-top: 12px; }
+.tools-divider {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); font-weight: 700;
+  margin: 22px 0 8px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.tools-divider:first-child { margin-top: 0; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%,100% { opacity: .3; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.15); } }
+@keyframes highlight { 0% { background: var(--accent-soft); } 100% { background: var(--bg-2); } }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { to { opacity: 0; transform: translateY(8px); } }
+
+details summary { cursor: pointer; color: var(--muted); user-select: none; font-size: 11px; }
+details[open] summary { margin-bottom: 8px; }
+.muted { color: var(--muted); font-size: 11px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row > * { flex: 1; min-width: 130px; }
+
+/* ============ LIGHT THEME ============ */
+body[data-theme="light"] {
+  --bg: #fafafa;
+  --bg-2: #ffffff;
+  --bg-3: #f4f4f5;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --text: #18181b;
+  --muted: #71717a;
+  --accent: #7c3aed;
+  --accent-soft: rgba(124, 58, 237, 0.07);
+  --success: #16a34a;
+  --warn: #d97706;
+  --err: #dc2626;
+  color-scheme: light;
+}
+body[data-theme="light"] .spinner {
+  border-color: rgba(0,0,0,.18);
+  border-top-color: #fff;
+}
+body[data-theme="light"] .modal-backdrop { background: rgba(0,0,0,0.4); }
+body[data-theme="light"] .chart-wrap { background: #fff; border: 1px solid var(--border); }
+body[data-theme="light"] .card { box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+body[data-theme="light"] .trace-step pre { background: #fafafa; }
+body[data-theme="light"] .qh-source { background: #f4f4f5; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>Digital Data Analyst</h1>
+  <div class="header-actions">
+    <button class="icon-btn" id="theme-toggle" title="Toggle theme">☾</button>
+    <button class="icon-btn active" id="sound-toggle" title="Toggle sound">♪</button>
+    <a class="icon-btn" href="https://aistudio.google.com/apikey" target="_blank" title="Get free API key">⚷</a>
+  </div>
+</header>
+
+<div class="card">
+  <h3>Model</h3>
+  <select id="model-pick" style="margin-bottom:10px">
+    <option value="gemini:gemini-2.5-flash">Gemini 2.5 Flash — free</option>
+    <option value="claude:claude-sonnet-4-6">Claude Sonnet 4.6 — balanced</option>
+    <option value="claude:claude-opus-4-6">Claude Opus 4.6 — most capable</option>
+    <option value="claude:claude-haiku-4-5-20251001">Claude Haiku 4.5 — fastest</option>
+  </select>
+  <input id="key" type="password" placeholder="">
+  <div class="muted" id="key-hint" style="margin-top:6px"></div>
+</div>
+
+<div class="card">
+  <h3>Data
+    <span class="right">
+      <button class="ghost tiny" id="reset-demo">Reset to demo</button>
+      <button class="ghost tiny danger" id="clear-data">Clear</button>
+    </span>
+  </h3>
+  <label class="upload-zone" id="drop">
+    Drop a CSV / Excel file or click to browse
+    <div class="muted" style="margin-top:4px">Files append as new tables — load several to join across them</div>
+    <input id="file" type="file" accept=".csv,.tsv,.txt,.xls,.xlsx" multiple>
+  </label>
+  <div id="upload-status" class="muted" style="margin-top:8px"></div>
+</div>
+
+<nav class="tabs">
+  <button data-tab="ask" class="active">Ask</button>
+  <button data-tab="tools">Tools</button>
+  <button data-tab="clean">Clean</button>
+  <button data-tab="pivot">Pivot</button>
+  <button data-tab="sql">SQL</button>
+  <button data-tab="glossary">Glossary</button>
+  <button data-tab="saved">Saved</button>
+  <button data-tab="schema">Schema</button>
+</nav>
+
+<!-- ============ ASK ============ -->
+<section class="tab-panel" data-panel="ask">
+  <div class="card">
+    <h3>Question
+      <span class="right">
+        <button class="ghost tiny" id="new-conv">New conversation</button>
+      </span>
+    </h3>
+    <textarea id="q" placeholder="e.g. Why did our retail margins drop in the Boston suburbs last month?"></textarea>
+    <div id="examples" style="margin-top:6px"></div>
+    <button class="primary" id="go">Run analysis</button>
+  </div>
+  <div id="trace"></div>
+  <div id="report" class="card" style="display:none">
+    <h3>Final Report
+      <span class="right">
+        <button class="ghost tiny" id="summarize-btn">Summarize</button>
+        <button class="ghost tiny" id="save-analysis">Save</button>
+        <button class="ghost tiny" id="export-md">Export MD</button>
+        <button class="ghost tiny" id="export-png">Chart PNG</button>
+      </span>
+    </h3>
+    <div class="headline" id="headline"></div>
+    <h4>Hypotheses</h4>
+    <ul class="hypothesis-list" id="hyp-list"></ul>
+    <h4>Analysis</h4>
+    <div id="summary"></div>
+    <div id="charts" class="charts-grid"></div>
+  </div>
+  <div id="followup-card" class="card" style="display:none">
+    <h3>Follow-up</h3>
+    <textarea id="followup" placeholder="Ask a follow-up that builds on the analysis above…"></textarea>
+    <button class="primary" id="followup-go">Continue</button>
+  </div>
+</section>
+
+<!-- ============ TOOLS ============ -->
+<section class="tab-panel" data-panel="tools" hidden>
+  <div class="card">
+    <h3>Distribution / Histogram</h3>
+    <div class="muted">Or click any column in the Schema tab.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="hist-table"></select></div>
+      <div><label class="lbl">Column</label><select id="hist-col"></select></div>
+    </div>
+    <button class="primary" id="hist-go">View distribution</button>
+  </div>
+
+  <div class="card">
+    <h3>Correlation Matrix</h3>
+    <div class="muted">Pearson correlations between numeric columns.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="corr-table"></select></div>
+    </div>
+    <button class="primary" id="corr-go">Compute correlations</button>
+    <div id="corr-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Forecast</h3>
+    <div class="muted">Aggregate by date and project a linear trend N periods forward.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="fc-table"></select></div>
+      <div><label class="lbl">Date col</label><select id="fc-date"></select></div>
+      <div><label class="lbl">Value col</label><select id="fc-val"></select></div>
+      <div><label class="lbl">Aggregate</label><select id="fc-agg"><option>SUM</option><option>AVG</option><option>COUNT</option></select></div>
+      <div><label class="lbl">Periods</label><input type="number" id="fc-n" value="14" min="1" max="365"></div>
+    </div>
+    <button class="primary" id="fc-go">Forecast</button>
+    <div id="fc-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Outlier Detection (IQR)</h3>
+    <div class="muted">Flag rows where the column is outside Q1−1.5·IQR or Q3+1.5·IQR.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="ol-table"></select></div>
+      <div><label class="lbl">Column</label><select id="ol-col"></select></div>
+    </div>
+    <button class="primary" id="ol-go">Find outliers</button>
+    <div id="ol-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Period-over-Period</h3>
+    <div class="muted">Bucket a metric by time period and compute lift between periods.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="pop-table"></select></div>
+      <div><label class="lbl">Date col</label><select id="pop-date"></select></div>
+      <div><label class="lbl">Value col</label><select id="pop-val"></select></div>
+      <div><label class="lbl">Aggregate</label><select id="pop-agg"><option>SUM</option><option>AVG</option><option>COUNT</option></select></div>
+      <div><label class="lbl">Period</label><select id="pop-period"><option>day</option><option>week</option><option selected>month</option><option>quarter</option><option>year</option></select></div>
+    </div>
+    <button class="primary" id="pop-go">Compare</button>
+    <div id="pop-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Group-by Builder</h3>
+    <div class="muted">Quick aggregation without writing SQL.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="gb-table"></select></div>
+      <div><label class="lbl">Group by</label><select id="gb-by"></select></div>
+      <div><label class="lbl">Value</label><select id="gb-val"></select></div>
+      <div><label class="lbl">Aggregate</label><select id="gb-agg"><option>SUM</option><option>AVG</option><option>COUNT</option><option>MIN</option><option>MAX</option></select></div>
+      <div><label class="lbl">Order</label><select id="gb-order"><option value="DESC">↓ Desc</option><option value="ASC">↑ Asc</option></select></div>
+    </div>
+    <button class="primary" id="gb-go">Run</button>
+    <div id="gb-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Two-Sample T-Test</h3>
+    <div class="muted">Compare means of a numeric column between two groups in a categorical column.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="tt-table"></select></div>
+      <div><label class="lbl">Group col</label><select id="tt-group"></select></div>
+      <div><label class="lbl">Value col</label><select id="tt-val"></select></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Group A</label><select id="tt-a"></select></div>
+      <div><label class="lbl">Group B</label><select id="tt-b"></select></div>
+    </div>
+    <button class="primary" id="tt-go">Run t-test</button>
+    <div id="tt-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Join Tables</h3>
+    <div class="muted">Visual join builder. Preview, then save the result as a new table.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Left table</label><select id="jn-left"></select></div>
+      <div><label class="lbl">Left key</label><select id="jn-leftkey"></select></div>
+      <div><label class="lbl">Type</label><select id="jn-type"><option>INNER</option><option>LEFT</option><option>RIGHT</option></select></div>
+      <div><label class="lbl">Right table</label><select id="jn-right"></select></div>
+      <div><label class="lbl">Right key</label><select id="jn-rightkey"></select></div>
+    </div>
+    <button class="primary" id="jn-go">Preview join</button>
+    <button class="ghost" id="jn-save" style="margin-left:6px">Save as table</button>
+    <div id="jn-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Cohort Retention</h3>
+    <div class="muted">Group users by signup period and track retention over time.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="ch-table"></select></div>
+      <div><label class="lbl">User ID</label><select id="ch-user"></select></div>
+      <div><label class="lbl">Signup date</label><select id="ch-signup"></select></div>
+      <div><label class="lbl">Activity date</label><select id="ch-activity"></select></div>
+      <div><label class="lbl">Period</label><select id="ch-period"><option>week</option><option selected>month</option></select></div>
+    </div>
+    <button class="primary" id="ch-go">Compute retention</button>
+    <div id="ch-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Linear Regression</h3>
+    <div class="muted">OLS fit. Returns coefficients, R², and a scatter + fit line chart.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="lr-table"></select></div>
+      <div><label class="lbl">y (dependent)</label><select id="lr-y"></select></div>
+      <div><label class="lbl">x (independent)</label><select id="lr-x"></select></div>
+    </div>
+    <button class="primary" id="lr-go">Fit</button>
+    <div id="lr-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Pareto / 80-20</h3>
+    <div class="muted">Sort categories by metric and find the top contributors driving 80% of total.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="pa-table"></select></div>
+      <div><label class="lbl">Category</label><select id="pa-cat"></select></div>
+      <div><label class="lbl">Value</label><select id="pa-val"></select></div>
+      <div><label class="lbl">Aggregate</label><select id="pa-agg"><option>SUM</option><option>COUNT</option><option>AVG</option></select></div>
+    </div>
+    <button class="primary" id="pa-go">Build Pareto</button>
+    <div id="pa-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>A/B Test Sample Size</h3>
+    <div class="muted">Required sample size per variant for a two-proportion z-test.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Baseline (%)</label><input type="number" id="ss-base" value="10" step="0.1"></div>
+      <div><label class="lbl">MDE (% abs)</label><input type="number" id="ss-mde" value="2" step="0.1"></div>
+      <div><label class="lbl">Confidence (%)</label><input type="number" id="ss-conf" value="95"></div>
+      <div><label class="lbl">Power (%)</label><input type="number" id="ss-power" value="80"></div>
+    </div>
+    <button class="primary" id="ss-go">Calculate</button>
+    <div id="ss-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Funnel Analysis</h3>
+    <div class="muted">Conversion through ordered steps. Each step is a value in the event column.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="fn-table"></select></div>
+      <div><label class="lbl">User col</label><select id="fn-user"></select></div>
+      <div><label class="lbl">Event col</label><select id="fn-event"></select></div>
+    </div>
+    <div style="margin-top:8px">
+      <label class="lbl">Steps (one per line, in order)</label>
+      <textarea id="fn-steps" class="code" placeholder="visit&#10;signup&#10;purchase"></textarea>
+    </div>
+    <button class="primary" id="fn-go">Compute funnel</button>
+    <div id="fn-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Window Functions</h3>
+    <div class="muted">Generate window function SQL without writing it.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="wn-table"></select></div>
+      <div><label class="lbl">Function</label>
+        <select id="wn-func">
+          <option>ROW_NUMBER</option><option>RANK</option><option>DENSE_RANK</option>
+          <option>LAG</option><option>LEAD</option>
+          <option>SUM (running)</option><option>AVG (running)</option>
+        </select>
+      </div>
+      <div><label class="lbl">Value col</label><select id="wn-val"></select></div>
+      <div><label class="lbl">Partition by</label><select id="wn-part"></select></div>
+      <div><label class="lbl">Order by</label><select id="wn-order"></select></div>
+    </div>
+    <button class="primary" id="wn-go">Run</button>
+    <div id="wn-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Quantile Bucketing</h3>
+    <div class="muted">Bin a numeric column into N equal-frequency buckets and add the result as a new column.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="qb-table"></select></div>
+      <div><label class="lbl">Column</label><select id="qb-col"></select></div>
+      <div><label class="lbl">Buckets</label>
+        <select id="qb-n"><option>4</option><option selected>10</option><option>20</option><option>100</option></select>
+      </div>
+    </div>
+    <button class="primary" id="qb-go">Add bucket column</button>
+    <div id="qb-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Normalize Column</h3>
+    <div class="muted">Add a standardized version of a numeric column.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="nm-table"></select></div>
+      <div><label class="lbl">Column</label><select id="nm-col"></select></div>
+      <div><label class="lbl">Method</label>
+        <select id="nm-method"><option>z-score</option><option>min-max (0-1)</option></select>
+      </div>
+    </div>
+    <button class="primary" id="nm-go">Add normalized column</button>
+    <div id="nm-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Geographic Map</h3>
+    <div class="muted">Plot points from a table with latitude/longitude columns.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="mp-table"></select></div>
+      <div><label class="lbl">Latitude</label><select id="mp-lat"></select></div>
+      <div><label class="lbl">Longitude</label><select id="mp-lon"></select></div>
+      <div><label class="lbl">Label</label><select id="mp-label"></select></div>
+      <div><label class="lbl">Size by (optional)</label><select id="mp-size"></select></div>
+    </div>
+    <button class="primary" id="mp-go">Render map</button>
+    <div id="mp-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Sankey Flow Diagram</h3>
+    <div class="muted">Visualize flows between source and target categories.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="sk-table"></select></div>
+      <div><label class="lbl">Source</label><select id="sk-src"></select></div>
+      <div><label class="lbl">Target</label><select id="sk-tgt"></select></div>
+      <div><label class="lbl">Value (optional)</label><select id="sk-val"></select></div>
+    </div>
+    <button class="primary" id="sk-go">Build Sankey</button>
+    <div id="sk-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Survival Curve (Kaplan-Meier)</h3>
+    <div class="muted">Estimate survival probability over time. Time = duration observed, Event = 1 if churned/died, 0 if censored.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="sv-table"></select></div>
+      <div><label class="lbl">Time col</label><select id="sv-time"></select></div>
+      <div><label class="lbl">Event col (1/0)</label><select id="sv-event"></select></div>
+    </div>
+    <button class="primary" id="sv-go">Compute</button>
+    <div id="sv-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Multi-variable Regression</h3>
+    <div class="muted">OLS with multiple X columns. Returns coefficients and R².</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="mr-table"></select></div>
+      <div><label class="lbl">y (dependent)</label><select id="mr-y"></select></div>
+    </div>
+    <div style="margin-top:8px">
+      <label class="lbl">X columns (Ctrl/Cmd-click for multiple)</label>
+      <select id="mr-x" multiple size="6"></select>
+    </div>
+    <button class="primary" id="mr-go">Fit</button>
+    <div id="mr-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Chi-Squared Test</h3>
+    <div class="muted">Test independence between two categorical columns.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="cs-table"></select></div>
+      <div><label class="lbl">Column A</label><select id="cs-a"></select></div>
+      <div><label class="lbl">Column B</label><select id="cs-b"></select></div>
+    </div>
+    <button class="primary" id="cs-go">Run test</button>
+    <div id="cs-result" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Data Dictionary
+      <span class="right">
+        <button class="ghost tiny" id="dd-md">Export MD</button>
+        <button class="ghost tiny" id="dd-csv">Export CSV</button>
+      </span>
+    </h3>
+    <div class="muted">Auto-generated documentation of every column. Inline notes are saved to localStorage.</div>
+    <button class="primary" id="dd-build">Build dictionary</button>
+    <div id="dd-result" class="tool-result"></div>
+  </div>
+
+  <div class="tools-divider">Data Engineering</div>
+
+  <div class="card">
+    <h3>Date Dimensions</h3>
+    <div class="muted">Explode a date column into year, quarter, month, week, day-of-week, day-of-month, day-of-year, is_weekend.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="dx-table"></select></div>
+      <div><label class="lbl">Date column</label><select id="dx-col"></select></div>
+    </div>
+    <button class="primary" id="dx-go">Add date columns</button>
+    <div id="dx-out" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Sessionization</h3>
+    <div class="muted">Group events into sessions by user. New session when the gap between events exceeds N minutes.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="sn-table"></select></div>
+      <div><label class="lbl">User col</label><select id="sn-user"></select></div>
+      <div><label class="lbl">Timestamp col</label><select id="sn-ts"></select></div>
+      <div><label class="lbl">Idle gap (min)</label><input type="number" id="sn-gap" value="30" min="1"></div>
+    </div>
+    <button class="primary" id="sn-go">Add session_id</button>
+    <div id="sn-out" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>Rolling Window</h3>
+    <div class="muted">Add a rolling-window aggregate column (e.g. 7-day moving average).</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="rw-table"></select></div>
+      <div><label class="lbl">Value col</label><select id="rw-val"></select></div>
+      <div><label class="lbl">Order by</label><select id="rw-order"></select></div>
+      <div><label class="lbl">Function</label>
+        <select id="rw-func"><option>AVG</option><option>SUM</option><option>MIN</option><option>MAX</option></select>
+      </div>
+      <div><label class="lbl">Window size</label><input type="number" id="rw-n" value="7" min="2"></div>
+    </div>
+    <button class="primary" id="rw-go">Add rolling column</button>
+    <div id="rw-out" class="tool-result"></div>
+  </div>
+
+  <div class="card">
+    <h3>K-means Clustering</h3>
+    <div class="muted">Cluster rows into K groups based on selected numeric columns. Adds cluster_id column. Features are z-scored.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="km-table"></select></div>
+      <div><label class="lbl">K (clusters)</label><input type="number" id="km-k" value="3" min="2" max="20"></div>
+    </div>
+    <div style="margin-top:8px">
+      <label class="lbl">Features (Ctrl/Cmd-click for multiple)</label>
+      <select id="km-feats" multiple size="6"></select>
+    </div>
+    <button class="primary" id="km-go">Cluster</button>
+    <div id="km-out" class="tool-result"></div>
+  </div>
+
+  <div class="tools-divider">Quality</div>
+
+  <div class="card">
+    <h3>Data Assertions</h3>
+    <div class="muted">Each line: <code>description | SQL that should return 0 rows</code>. Saved to localStorage. Run any time to validate the data.</div>
+    <textarea id="da-text" class="code" placeholder="No negative revenue | SELECT * FROM sales WHERE revenue &lt; 0
+Every store has a region | SELECT * FROM stores WHERE region IS NULL
+Cost never exceeds revenue | SELECT * FROM sales WHERE cost &gt; revenue"></textarea>
+    <button class="primary" id="da-go">Run assertions</button>
+    <div id="da-out" class="tool-result"></div>
+  </div>
+</section>
+
+<!-- ============ CLEAN ============ -->
+<section class="tab-panel" data-panel="clean" hidden>
+  <div class="card">
+    <h3>Clean & Transform</h3>
+    <div class="muted" style="margin-bottom:10px">Operations apply immediately. Re-uploading resets.</div>
+    <select id="clean-table-pick" style="margin-bottom:12px"></select>
+    <div id="clean-list"></div>
+    <div style="margin-top:12px; display:flex; gap:6px; flex-wrap:wrap">
+      <button class="ghost" id="dedupe-btn">Remove duplicate rows</button>
+      <button class="ghost" id="add-col-btn">Add calculated column</button>
+      <button class="ghost" id="parse-dates-btn">Auto-parse dates</button>
+      <button class="ghost danger" id="drop-table-btn">Drop table</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PIVOT ============ -->
+<section class="tab-panel" data-panel="pivot" hidden>
+  <div class="card">
+    <h3>Pivot Table Builder</h3>
+    <div class="row">
+      <div><label class="lbl">Table</label><select id="piv-table"></select></div>
+      <div><label class="lbl">Rows</label><select id="piv-rows"></select></div>
+      <div><label class="lbl">Columns (optional)</label><select id="piv-cols"></select></div>
+      <div><label class="lbl">Values</label><select id="piv-vals"></select></div>
+      <div><label class="lbl">Aggregate</label>
+        <select id="piv-agg">
+          <option>SUM</option><option>AVG</option><option>COUNT</option>
+          <option>MIN</option><option>MAX</option>
+        </select>
+      </div>
+    </div>
+    <button class="primary" id="piv-run">Build pivot</button>
+    <label style="font-size:11px; display:inline-flex; align-items:center; gap:4px; margin-left:10px; color:var(--muted)">
+      <input type="checkbox" id="piv-heatmap" checked style="width:auto; margin:0"> heatmap cells
+    </label>
+    <div id="piv-result" class="tool-result"></div>
+  </div>
+</section>
+
+<!-- ============ SQL ============ -->
+<section class="tab-panel" data-panel="sql" hidden>
+  <div class="card">
+    <h3>SQL Editor
+      <span class="right">
+        <button class="ghost tiny" id="sql-export-csv">Export CSV</button>
+      </span>
+    </h3>
+    <textarea id="sql-text" class="code" placeholder="SELECT * FROM ... LIMIT 50;"></textarea>
+    <button class="primary" id="sql-run">Run query</button>
+    <button class="ghost" id="sql-explain" style="margin-left:6px">Explain plan</button>
+    <div id="sql-result" class="tool-result"></div>
+  </div>
+  <div class="card">
+    <h3>Query History <span class="badge" id="qh-count">0</span></h3>
+    <div id="qh-list"><div class="muted">No queries yet.</div></div>
+  </div>
+</section>
+
+<!-- ============ GLOSSARY ============ -->
+<section class="tab-panel" data-panel="glossary" hidden>
+  <div class="card">
+    <h3>Metric Glossary</h3>
+    <div class="muted" style="margin-bottom:8px">
+      One per line: <code>name: definition</code>. Injected into the agent's system prompt.
+    </div>
+    <textarea id="glossary-text" class="code" placeholder="active_user: customer with at least one purchase in the last 30 days
+margin_rate: (revenue - cost) / revenue
+fiscal_year: starts February 1
+last_month: the most recent fully completed calendar month"></textarea>
+    <button class="primary" id="glossary-save">Save glossary</button>
+  </div>
+</section>
+
+<!-- ============ SAVED ============ -->
+<section class="tab-panel" data-panel="saved" hidden>
+  <div class="card">
+    <h3>Saved Analyses</h3>
+    <div class="muted" style="margin-bottom:8px">Click load to restore. Re-run to apply to current data.</div>
+    <div id="saved-list"></div>
+  </div>
+</section>
+
+<!-- ============ SCHEMA ============ -->
+<section class="tab-panel" data-panel="schema" hidden>
+  <div class="card" id="profile-card">
+    <h3>Data Profile <span class="badge" id="profile-count"></span></h3>
+    <div class="muted" style="margin-bottom:8px">Click any column to see its distribution.</div>
+    <div class="profile-grid" id="profile-grid"></div>
+  </div>
+  <div class="card">
+    <h3>Schema Text (sent to agent)</h3>
+    <pre id="schema-view" style="background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:10px; margin:0; font-size:11px; white-space:pre-wrap; font-family:ui-monospace,monospace;">loading…</pre>
+  </div>
+</section>
+
+</div>
+<div id="modal-root"></div>
+
+<script>
+// =====================================================================
+// SOUND
+// =====================================================================
+let soundOn = true, audioCtx = null;
+function ac() { return audioCtx || (audioCtx = new (window.AudioContext || window.webkitAudioContext)()); }
+function tone(freq, dur=0.08, type="sine", gain=0.03) {
+  if (!soundOn) return;
+  try {
+    const c = ac();
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.value = gain;
+    g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
+    o.connect(g).connect(c.destination);
+    o.start(); o.stop(c.currentTime + dur);
+  } catch(e) {}
+}
+const sfx = {
+  click:   () => tone(700, 0.03, "sine", 0.02),
+  sql:     () => tone(880, 0.06, "sine", 0.025),
+  py:      () => tone(990, 0.06, "sine", 0.025),
+  success: () => { [659,880].forEach((f,i)=>setTimeout(()=>tone(f,0.1,"sine",0.03),i*70)); },
+  err:     () => tone(220, 0.12, "sine", 0.03),
+  ding:    () => tone(1320, 0.08, "sine", 0.025),
+};
+document.getElementById("sound-toggle").onclick = (e) => {
+  soundOn = !soundOn;
+  e.currentTarget.classList.toggle("active", soundOn);
+  if (soundOn) sfx.ding();
+};
+
+// =====================================================================
+// DATABASE
+// =====================================================================
+let db, SQL, SCHEMA_TEXT = "", currentTables = [];
+
+const REGIONS = {
+  Northeast: [["Boston","MA"],["Cambridge","MA"],["Brookline","MA"],["Newton","MA"],["Quincy","MA"],["Providence","RI"],["Hartford","CT"]],
+  Midwest:   [["Chicago","IL"],["Evanston","IL"],["Detroit","MI"],["Cleveland","OH"],["Minneapolis","MN"]],
+  South:     [["Atlanta","GA"],["Miami","FL"],["Austin","TX"],["Dallas","TX"],["Charlotte","NC"]],
+  West:      [["Seattle","WA"],["Portland","OR"],["San Francisco","CA"],["Oakland","CA"],["Denver","CO"]],
+};
+const BOSTON_SUBURBS = new Set(["Cambridge","Brookline","Newton","Quincy"]);
+const CATEGORIES = ["Apparel","Electronics","Home","Grocery","Beauty"];
+function rand(seed) { let s = seed; return () => { s = (s*9301+49297)%233280; return s/233280; }; }
+
+async function ensureSql() {
+  if (SQL) return SQL;
+  SQL = await initSqlJs({ locateFile: f => "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/" + f });
+  return SQL;
+}
+
+async function loadDemo() {
+  await ensureSql();
+  db = new SQL.Database();
+  db.run(`CREATE TABLE stores (store_id INTEGER PRIMARY KEY, city TEXT, state TEXT, region TEXT);
+          CREATE TABLE sales (sale_id INTEGER PRIMARY KEY, store_id INTEGER, sale_date TEXT, category TEXT, units INTEGER, revenue REAL, cost REAL);`);
+  const rng = rand(42);
+  let storeId = 1, saleId = 1;
+  const stores = [];
+  for (const [region, cities] of Object.entries(REGIONS)) {
+    for (const [city, state] of cities) {
+      stores.push({ id: storeId, city, state, region });
+      db.run("INSERT INTO stores VALUES (?,?,?,?)", [storeId, city, state, region]);
+      storeId++;
+    }
+  }
+  const start = new Date("2025-11-01"), end = new Date("2026-03-31");
+  for (const s of stores) {
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+      for (const cat of CATEGORIES) {
+        if (rng() < 0.55) continue;
+        const units = 5 + Math.floor(rng()*60);
+        const unitPrice = 10 + rng()*90;
+        const revenue = +(units * unitPrice).toFixed(2);
+        let marginRate = 0.32 + rng()*0.15;
+        const isMarch = d.getFullYear()===2026 && d.getMonth()===2;
+        if (isMarch && BOSTON_SUBURBS.has(s.city) && (cat==="Apparel" || cat==="Home"))
+          marginRate -= 0.22;
+        const cost = +(revenue * (1 - marginRate)).toFixed(2);
+        db.run("INSERT INTO sales VALUES (?,?,?,?,?,?,?)",
+               [saleId++, s.id, d.toISOString().slice(0,10), cat, units, revenue, cost]);
+      }
+    }
+  }
+  currentTables = ["stores","sales"];
+  refreshAll();
+}
+
+function refreshAll() {
+  rebuildSchemaText();
+  profileAll();
+  refreshCleanPanel();
+  refreshPivotPanel();
+  refreshToolsPanel();
+}
+
+// =====================================================================
+// FILE UPLOAD
+// =====================================================================
+function sanitizeIdent(s, fb) {
+  let out = String(s||"").trim().replace(/[^A-Za-z0-9_]+/g,"_").replace(/^_+|_+$/g,"");
+  if (!out) out = fb;
+  if (/^[0-9]/.test(out)) out = "_"+out;
+  return out.slice(0,60);
+}
+function inferType(values) {
+  let allNum=true, allInt=true, any=false;
+  for (const v of values) {
+    if (v==null||v==="") continue;
+    any = true;
+    const n = Number(v);
+    if (!Number.isFinite(n) || String(v).trim()==="") { allNum=allInt=false; break; }
+    if (!Number.isInteger(n)) allInt=false;
+  }
+  if (!any) return "TEXT";
+  if (allInt) return "INTEGER";
+  if (allNum) return "REAL";
+  return "TEXT";
+}
+function uniqueTableName(base) {
+  let name = base, k = 2;
+  while (currentTables.includes(name)) name = base + "_" + (k++);
+  return name;
+}
+async function loadUserFile(file) {
+  await ensureSql();
+  if (!db) db = new SQL.Database();
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type:"array", cellDates:true });
+  let totalAdded = 0;
+  for (const sheetName of wb.SheetNames) {
+    const sheet = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header:1, raw:true, defval:null, blankrows:false });
+    if (!rows.length) continue;
+    const dataRows = rows.slice(1);
+    const used = new Set();
+    const headers = rows[0].map((h,i) => {
+      let n = sanitizeIdent(h,"col_"+(i+1)), b = n, k=2;
+      while (used.has(n)) n = b+"_"+(k++);
+      used.add(n); return n;
+    });
+    const cols = headers.map((h,i) => ({ name:h, type: inferType(dataRows.map(r=>r[i])) }));
+    const baseName = sanitizeIdent(file.name.replace(/\.[^.]+$/,""), "data") +
+                     (wb.SheetNames.length > 1 ? "_" + sanitizeIdent(sheetName, "sheet") : "");
+    const tableName = uniqueTableName(baseName);
+    db.run(`CREATE TABLE ${tableName} (${cols.map(c=>`"${c.name}" ${c.type}`).join(", ")})`);
+    const stmt = db.prepare(`INSERT INTO ${tableName} VALUES (${cols.map(()=>"?").join(",")})`);
+    for (const r of dataRows) {
+      const vals = cols.map((c,i) => {
+        let v = r[i];
+        if (v instanceof Date) v = v.toISOString().slice(0,10);
+        if (v === undefined) v = null;
+        if ((c.type==="INTEGER"||c.type==="REAL") && v!=null && v!=="") v = Number(v);
+        if (v === "") v = null;
+        return v;
+      });
+      stmt.run(vals);
+    }
+    stmt.free();
+    currentTables.push(tableName);
+    totalAdded += dataRows.length;
+  }
+  refreshAll();
+  document.getElementById("upload-status").textContent =
+    `Added ${totalAdded.toLocaleString()} rows from "${file.name}". Tables: ${currentTables.join(", ")}`;
+  showToast(`Loaded ${totalAdded.toLocaleString()} rows`, "success");
+  sfx.success();
+}
+async function clearAllData() {
+  await ensureSql();
+  db = new SQL.Database();
+  currentTables = [];
+  refreshAll();
+  document.getElementById("upload-status").textContent = "Database cleared.";
+  showToast("Cleared", "info");
+}
+function rebuildSchemaText() {
+  const lines = [];
+  for (const t of currentTables) {
+    try {
+      const info = db.exec(`PRAGMA table_info(${t})`)[0];
+      const colDefs = info.values.map(r => `${r[1]} ${r[2]}`).join(", ");
+      const count = db.exec(`SELECT COUNT(*) FROM ${t}`)[0].values[0][0];
+      lines.push(`${t}(${colDefs})  -- ${count} rows`);
+    } catch(e) {}
+  }
+  const glossary = localStorage.getItem("glossary") || "";
+  SCHEMA_TEXT = (lines.length ? lines.join("\n") : "(no tables loaded)") +
+    `\n\nToday's date: ${new Date().toISOString().slice(0,10)}\nDialect: SQLite` +
+    (glossary.trim() ? `\n\nMetric glossary (use these definitions):\n${glossary.trim()}` : "");
+  document.getElementById("schema-view").textContent = SCHEMA_TEXT;
+}
+
+// =====================================================================
+// PROFILING
+// =====================================================================
+function profileAll() {
+  const grid = document.getElementById("profile-grid");
+  grid.innerHTML = "";
+  if (!currentTables.length) {
+    grid.innerHTML = `<div class="muted">No data loaded.</div>`;
+    document.getElementById("profile-count").textContent = "";
+    return;
+  }
+  let totalCols = 0, totalRows = 0;
+  for (const t of currentTables) {
+    const info = db.exec(`PRAGMA table_info(${t})`)[0];
+    const total = db.exec(`SELECT COUNT(*) FROM ${t}`)[0].values[0][0];
+    totalRows += total;
+    for (const row of info.values) {
+      const col = row[1], type = row[2];
+      totalCols++;
+      const card = document.createElement("div");
+      card.className = "profile-col";
+      card.onclick = () => showHistogram(t, col, type);
+      try {
+        const nonNull = db.exec(`SELECT COUNT("${col}") FROM ${t}`)[0].values[0][0];
+        const distinct = db.exec(`SELECT COUNT(DISTINCT "${col}") FROM ${t}`)[0].values[0][0];
+        const nullPct = total ? Math.round(100*(1 - nonNull/total)) : 0;
+        let flag = "";
+        if (nullPct >= 50) flag = `<span class="flag err">${nullPct}% null</span>`;
+        else if (nullPct >= 20) flag = `<span class="flag warn">${nullPct}% null</span>`;
+        else if (distinct === 1 && total > 1) flag = `<span class="flag warn">single</span>`;
+        else if (distinct === total && total > 5) flag = `<span class="flag key">key</span>`;
+        let extra = "";
+        if (type === "INTEGER" || type === "REAL") {
+          const r = db.exec(`SELECT MIN("${col}"), MAX("${col}"), AVG("${col}") FROM ${t}`)[0].values[0];
+          extra = `<div class="stat"><span>min</span><span>${fmt(r[0])}</span></div>
+                   <div class="stat"><span>max</span><span>${fmt(r[1])}</span></div>
+                   <div class="stat"><span>avg</span><span>${fmt(r[2])}</span></div>`;
+        } else {
+          const top = db.exec(`SELECT "${col}", COUNT(*) c FROM ${t} WHERE "${col}" IS NOT NULL GROUP BY "${col}" ORDER BY c DESC LIMIT 1`);
+          if (top && top[0]) extra = `<div class="stat"><span>top</span><span>${String(top[0].values[0][0]).slice(0,18)}</span></div>`;
+        }
+        card.innerHTML =
+          `${flag}
+           <div class="name">${col}<span class="type">${type||"TEXT"}</span></div>
+           <div class="stat"><span>${t}</span><span>${total} rows</span></div>
+           <div class="stat"><span>distinct</span><span>${distinct}</span></div>
+           <div class="stat"><span>null</span><span>${nullPct}%</span></div>
+           <div class="bar"><div style="width:${100-nullPct}%"></div></div>
+           ${extra}`;
+      } catch(e) {
+        card.innerHTML = `<div class="name">${col}</div><div class="muted">${e.message}</div>`;
+      }
+      grid.appendChild(card);
+    }
+  }
+  document.getElementById("profile-count").textContent =
+    `${totalCols} cols · ${totalRows.toLocaleString()} rows · ${currentTables.length} tables`;
+}
+function fmt(n) {
+  if (n == null) return "—";
+  if (typeof n !== "number") return String(n).slice(0,18);
+  if (Math.abs(n) >= 1000) return n.toLocaleString(undefined, {maximumFractionDigits:0});
+  return Number(n.toFixed(2)).toString();
+}
+
+// =====================================================================
+// SQL EXECUTION + QUERY HISTORY
+// =====================================================================
+let queryHistory = [];
+function logQuery(sql, source) {
+  queryHistory.unshift({ sql, source, time: new Date() });
+  if (queryHistory.length > 50) queryHistory.pop();
+  renderQueryHistory();
+}
+function renderQueryHistory() {
+  const el = document.getElementById("qh-list");
+  if (!el) return;
+  document.getElementById("qh-count").textContent = queryHistory.length;
+  if (!queryHistory.length) { el.innerHTML = `<div class="muted">No queries yet.</div>`; return; }
+  el.innerHTML = queryHistory.map((q,i) => `
+    <div class="qh-row" data-i="${i}">
+      <span class="qh-time">${q.time.toLocaleTimeString().slice(0,5)}</span>
+      <span class="qh-source">${q.source}</span>
+      <span class="qh-sql">${escapeHtml(q.sql.replace(/\s+/g," ").slice(0,200))}</span>
+    </div>
+  `).join("");
+  el.querySelectorAll(".qh-row").forEach(row => {
+    row.onclick = () => {
+      document.getElementById("sql-text").value = queryHistory[row.dataset.i].sql;
+      switchTab("sql");
+      sfx.click();
+    };
+  });
+}
+
+function runSql(sql, source) {
+  if (source) logQuery(sql, source);
+  try {
+    if (!db) return { ok:false, error:"No database loaded." };
+    const res = db.exec(sql);
+    if (!res.length) return { ok:true, rows:[], columns:[], row_count:0 };
+    const { columns, values } = res[0];
+    const rows = values.slice(0,200).map(r => Object.fromEntries(columns.map((c,i)=>[c,r[i]])));
+    return { ok:true, columns, rows, row_count: values.length, truncated: values.length>200 };
+  } catch(e) { return { ok:false, error: String(e.message||e) }; }
+}
+
+function renderTable(rows, container, maxRows = 50) {
+  container.innerHTML = "";
+  if (!rows || !rows.length) { container.innerHTML = `<div class="muted">(no rows)</div>`; return; }
+  const cols = Object.keys(rows[0]);
+  let html = `<table class="result-table"><tr>` + cols.map(c=>`<th>${escapeHtml(c)}</th>`).join("") + "</tr>";
+  for (const r of rows.slice(0,maxRows))
+    html += "<tr>" + cols.map(c=>`<td>${escapeHtml(r[c]??"")}</td>`).join("") + "</tr>";
+  html += "</table>";
+  if (rows.length > maxRows) html += `<div class="muted" style="margin-top:4px">…${rows.length-maxRows} more rows</div>`;
+  container.innerHTML = html;
+}
+
+// =====================================================================
+// MODAL
+// =====================================================================
+function openModal(html) {
+  const root = document.getElementById("modal-root");
+  root.innerHTML = `<div class="modal-backdrop"><div class="modal">${html}</div></div>`;
+  root.querySelector(".modal-backdrop").onclick = (e) => {
+    if (e.target.classList.contains("modal-backdrop")) closeModal();
+  };
+  root.querySelectorAll(".close").forEach(b => b.onclick = closeModal);
+}
+function closeModal() { document.getElementById("modal-root").innerHTML = ""; }
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+// =====================================================================
+// TOOLS: HISTOGRAM
+// =====================================================================
+function showHistogram(table, col, type) {
+  const isNum = type === "INTEGER" || type === "REAL";
+  if (isNum) {
+    const r = db.exec(`SELECT "${col}" FROM ${table} WHERE "${col}" IS NOT NULL`)[0];
+    if (!r) return;
+    const vals = r.values.map(v => Number(v[0])).filter(Number.isFinite);
+    if (!vals.length) return;
+    const sorted = [...vals].sort((a,b)=>a-b);
+    const min = sorted[0], max = sorted[sorted.length-1];
+    const mean = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const median = sorted[Math.floor(sorted.length/2)];
+    const stdev = Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0)/vals.length);
+    const q1 = sorted[Math.floor(sorted.length*0.25)];
+    const q3 = sorted[Math.floor(sorted.length*0.75)];
+    const bins = 20;
+    const binSize = (max - min) / bins || 1;
+    const counts = new Array(bins).fill(0);
+    for (const v of vals) {
+      const bi = Math.min(bins-1, Math.floor((v - min) / binSize));
+      counts[bi]++;
+    }
+    const labels = counts.map((_,i) => fmt(min + i*binSize));
+    openModal(`
+      <h3>${escapeHtml(col)} <span class="muted" style="margin-left:8px;font-weight:400">${table}</span><button class="close">×</button></h3>
+      <div class="stat-grid">
+        <div><div class="lbl">count</div><div class="val">${vals.length.toLocaleString()}</div></div>
+        <div><div class="lbl">min</div><div class="val">${fmt(min)}</div></div>
+        <div><div class="lbl">max</div><div class="val">${fmt(max)}</div></div>
+        <div><div class="lbl">mean</div><div class="val">${fmt(mean)}</div></div>
+        <div><div class="lbl">median</div><div class="val">${fmt(median)}</div></div>
+        <div><div class="lbl">stdev</div><div class="val">${fmt(stdev)}</div></div>
+        <div><div class="lbl">Q1</div><div class="val">${fmt(q1)}</div></div>
+        <div><div class="lbl">Q3</div><div class="val">${fmt(q3)}</div></div>
+      </div>
+      <div class="chart-wrap"><canvas id="hist-canvas" height="160"></canvas></div>
+    `);
+    new Chart(document.getElementById("hist-canvas"), {
+      type: "bar",
+      data: { labels, datasets: [{ data: counts, backgroundColor: "#a78bfa" }]},
+      options: chartOpts(false)
+    });
+  } else {
+    const r = db.exec(`SELECT "${col}", COUNT(*) c FROM ${table} WHERE "${col}" IS NOT NULL GROUP BY "${col}" ORDER BY c DESC LIMIT 20`)[0];
+    if (!r) return;
+    const labels = r.values.map(v => String(v[0]).slice(0,30));
+    const counts = r.values.map(v => v[1]);
+    const total = db.exec(`SELECT COUNT(*) FROM ${table}`)[0].values[0][0];
+    const distinct = db.exec(`SELECT COUNT(DISTINCT "${col}") FROM ${table}`)[0].values[0][0];
+    openModal(`
+      <h3>${escapeHtml(col)} <span class="muted" style="margin-left:8px;font-weight:400">${table}</span><button class="close">×</button></h3>
+      <div class="stat-grid">
+        <div><div class="lbl">total</div><div class="val">${total.toLocaleString()}</div></div>
+        <div><div class="lbl">distinct</div><div class="val">${distinct.toLocaleString()}</div></div>
+        <div><div class="lbl">top</div><div class="val">${escapeHtml(labels[0] || "—")}</div></div>
+      </div>
+      <div class="chart-wrap"><canvas id="hist-canvas" height="${Math.max(160, labels.length*18)}"></canvas></div>
+    `);
+    new Chart(document.getElementById("hist-canvas"), {
+      type: "bar",
+      data: { labels, datasets: [{ data: counts, backgroundColor: "#a78bfa" }]},
+      options: { ...chartOpts(false), indexAxis: 'y' }
+    });
+  }
+}
+function chartOpts(showLegend) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: showLegend, labels: { color: "#444" }} },
+    scales: {
+      x: { ticks: { color: "#666", font: { size: 9 } }, grid: { color: "#eee" } },
+      y: { ticks: { color: "#666", font: { size: 9 } }, grid: { color: "#eee" } }
+    }
+  };
+}
+
+// =====================================================================
+// TOOLS: REFRESH PICKERS
+// =====================================================================
+function refreshToolsPanel() {
+  const tableSelects = ["hist-table","corr-table","fc-table","ol-table","pop-table","gb-table","tt-table","jn-left","jn-right","ch-table","lr-table","pa-table","fn-table","wn-table","qb-table","nm-table","mp-table","sk-table","sv-table","mr-table","cs-table","dx-table","sn-table","rw-table","km-table"];
+  for (const id of tableSelects) {
+    const sel = document.getElementById(id);
+    if (!sel) continue;
+    const prev = sel.value;
+    sel.innerHTML = currentTables.map(t => `<option>${t}</option>`).join("");
+    if (currentTables.includes(prev)) sel.value = prev;
+  }
+  refreshHistCols(); refreshFcCols(); refreshOlCols(); refreshPopCols();
+  refreshGbCols(); refreshTtCols();
+  refreshJoinKeys(); refreshChCols(); refreshLrCols(); refreshPaCols();
+  refreshFnCols(); refreshWnCols(); refreshQbCols(); refreshNmCols();
+  refreshMpCols(); refreshSkCols(); refreshSvCols(); refreshMrCols(); refreshCsCols();
+  refreshDxCols(); refreshSnCols(); refreshRwCols(); refreshKmCols();
+}
+function refreshDxCols() { fillSelect("dx-col", colsOf(document.getElementById("dx-table").value)); }
+function refreshSnCols() {
+  const t = document.getElementById("sn-table").value;
+  fillSelect("sn-user", colsOf(t));
+  fillSelect("sn-ts", colsOf(t));
+}
+function refreshRwCols() {
+  const t = document.getElementById("rw-table").value;
+  fillSelect("rw-val", colsOf(t, ty => ty==="INTEGER" || ty==="REAL"));
+  fillSelect("rw-order", colsOf(t));
+}
+function refreshKmCols() {
+  const t = document.getElementById("km-table").value;
+  const numCols = colsOf(t, ty => ty==="INTEGER" || ty==="REAL");
+  const sel = document.getElementById("km-feats");
+  sel.innerHTML = numCols.map(c => `<option>${c}</option>`).join("");
+}
+["dx-table","sn-table","rw-table","km-table"].forEach(id => {
+  document.getElementById(id).addEventListener("change", () => {
+    if (id==="dx-table") refreshDxCols();
+    if (id==="sn-table") refreshSnCols();
+    if (id==="rw-table") refreshRwCols();
+    if (id==="km-table") refreshKmCols();
+  });
+});
+function refreshFnCols() {
+  const t = document.getElementById("fn-table").value;
+  fillSelect("fn-user", colsOf(t));
+  fillSelect("fn-event", colsOf(t));
+}
+function refreshWnCols() {
+  const t = document.getElementById("wn-table").value;
+  const all = colsOf(t);
+  fillSelect("wn-val", all);
+  const partSel = document.getElementById("wn-part");
+  const prevP = partSel.value;
+  partSel.innerHTML = `<option value="">(none)</option>` + all.map(c=>`<option>${c}</option>`).join("");
+  if (all.includes(prevP)) partSel.value = prevP;
+  fillSelect("wn-order", all);
+}
+function refreshQbCols() {
+  fillSelect("qb-col", colsOf(document.getElementById("qb-table").value, ty => ty==="INTEGER" || ty==="REAL"));
+}
+function refreshNmCols() {
+  fillSelect("nm-col", colsOf(document.getElementById("nm-table").value, ty => ty==="INTEGER" || ty==="REAL"));
+}
+function refreshMpCols() {
+  const t = document.getElementById("mp-table").value;
+  const numCols = colsOf(t, ty => ty==="REAL" || ty==="INTEGER");
+  fillSelect("mp-lat", numCols);
+  fillSelect("mp-lon", numCols);
+  fillSelect("mp-label", colsOf(t));
+  const sizeSel = document.getElementById("mp-size");
+  const prevS = sizeSel.value;
+  sizeSel.innerHTML = `<option value="">(none)</option>` + numCols.map(c=>`<option>${c}</option>`).join("");
+  if (numCols.includes(prevS)) sizeSel.value = prevS;
+}
+function refreshSkCols() {
+  const t = document.getElementById("sk-table").value;
+  const all = colsOf(t);
+  fillSelect("sk-src", all);
+  fillSelect("sk-tgt", all);
+  const valSel = document.getElementById("sk-val");
+  const prevV = valSel.value;
+  const numCols = colsOf(t, ty => ty==="REAL" || ty==="INTEGER");
+  valSel.innerHTML = `<option value="">(count)</option>` + numCols.map(c=>`<option>${c}</option>`).join("");
+  if (numCols.includes(prevV)) valSel.value = prevV;
+}
+function refreshSvCols() {
+  const t = document.getElementById("sv-table").value;
+  const numCols = colsOf(t, ty => ty==="INTEGER" || ty==="REAL");
+  fillSelect("sv-time", numCols);
+  fillSelect("sv-event", numCols);
+}
+function refreshMrCols() {
+  const t = document.getElementById("mr-table").value;
+  const numCols = colsOf(t, ty => ty==="INTEGER" || ty==="REAL");
+  fillSelect("mr-y", numCols);
+  const xSel = document.getElementById("mr-x");
+  xSel.innerHTML = numCols.map(c => `<option>${c}</option>`).join("");
+}
+function refreshCsCols() {
+  const t = document.getElementById("cs-table").value;
+  const all = colsOf(t);
+  fillSelect("cs-a", all);
+  fillSelect("cs-b", all);
+}
+["fn-table","wn-table","qb-table","nm-table","mp-table","sk-table","sv-table","mr-table","cs-table"].forEach(id => {
+  document.getElementById(id).addEventListener("change", () => {
+    if (id==="fn-table") refreshFnCols();
+    if (id==="wn-table") refreshWnCols();
+    if (id==="qb-table") refreshQbCols();
+    if (id==="nm-table") refreshNmCols();
+    if (id==="mp-table") refreshMpCols();
+    if (id==="sk-table") refreshSkCols();
+    if (id==="sv-table") refreshSvCols();
+    if (id==="mr-table") refreshMrCols();
+    if (id==="cs-table") refreshCsCols();
+  });
+});
+function refreshJoinKeys() {
+  fillSelect("jn-leftkey", colsOf(document.getElementById("jn-left").value));
+  fillSelect("jn-rightkey", colsOf(document.getElementById("jn-right").value));
+}
+function refreshChCols() {
+  const t = document.getElementById("ch-table").value;
+  fillSelect("ch-user", colsOf(t));
+  fillSelect("ch-signup", colsOf(t));
+  fillSelect("ch-activity", colsOf(t));
+}
+function refreshLrCols() {
+  const t = document.getElementById("lr-table").value;
+  fillSelect("lr-y", colsOf(t, ty => ty==="INTEGER" || ty==="REAL"));
+  fillSelect("lr-x", colsOf(t, ty => ty==="INTEGER" || ty==="REAL"));
+}
+function refreshPaCols() {
+  const t = document.getElementById("pa-table").value;
+  fillSelect("pa-cat", colsOf(t));
+  fillSelect("pa-val", colsOf(t, ty => ty==="INTEGER" || ty==="REAL"));
+}
+document.getElementById("jn-left").addEventListener("change", refreshJoinKeys);
+document.getElementById("jn-right").addEventListener("change", refreshJoinKeys);
+document.getElementById("ch-table").addEventListener("change", refreshChCols);
+document.getElementById("lr-table").addEventListener("change", refreshLrCols);
+document.getElementById("pa-table").addEventListener("change", refreshPaCols);
+function colsOf(t, filter) {
+  if (!t) return [];
+  try {
+    const info = db.exec(`PRAGMA table_info(${t})`)[0];
+    if (!info) return [];
+    return info.values.filter(r => !filter || filter(r[2])).map(r => r[1]);
+  } catch { return []; }
+}
+function fillSelect(id, options, prevKeep = true) {
+  const sel = document.getElementById(id);
+  const prev = sel.value;
+  sel.innerHTML = options.map(o => `<option>${o}</option>`).join("");
+  if (prevKeep && options.includes(prev)) sel.value = prev;
+}
+function refreshHistCols() {
+  fillSelect("hist-col", colsOf(document.getElementById("hist-table").value));
+}
+function refreshFcCols() {
+  const t = document.getElementById("fc-table").value;
+  fillSelect("fc-date", colsOf(t));
+  fillSelect("fc-val", colsOf(t, ty => ty==="INTEGER" || ty==="REAL"));
+}
+function refreshOlCols() {
+  fillSelect("ol-col", colsOf(document.getElementById("ol-table").value, ty => ty==="INTEGER" || ty==="REAL"));
+}
+function refreshPopCols() {
+  const t = document.getElementById("pop-table").value;
+  fillSelect("pop-date", colsOf(t));
+  fillSelect("pop-val", colsOf(t, ty => ty==="INTEGER" || ty==="REAL"));
+}
+function refreshGbCols() {
+  const t = document.getElementById("gb-table").value;
+  fillSelect("gb-by", colsOf(t));
+  fillSelect("gb-val", colsOf(t, ty => ty==="INTEGER" || ty==="REAL"));
+}
+function refreshTtCols() {
+  const t = document.getElementById("tt-table").value;
+  fillSelect("tt-group", colsOf(t));
+  fillSelect("tt-val", colsOf(t, ty => ty==="INTEGER" || ty==="REAL"));
+  refreshTtGroups();
+}
+function refreshTtGroups() {
+  const t = document.getElementById("tt-table").value;
+  const g = document.getElementById("tt-group").value;
+  if (!t || !g) return;
+  try {
+    const r = db.exec(`SELECT DISTINCT "${g}" FROM ${t} WHERE "${g}" IS NOT NULL ORDER BY 1 LIMIT 50`)[0];
+    const opts = r ? r.values.map(v => String(v[0])) : [];
+    fillSelect("tt-a", opts, false);
+    fillSelect("tt-b", opts, false);
+    if (opts.length > 1) document.getElementById("tt-b").value = opts[1];
+  } catch {}
+}
+["hist-table","fc-table","ol-table","pop-table","gb-table","tt-table"].forEach(id => {
+  document.getElementById(id).addEventListener("change", () => {
+    if (id==="hist-table") refreshHistCols();
+    if (id==="fc-table") refreshFcCols();
+    if (id==="ol-table") refreshOlCols();
+    if (id==="pop-table") refreshPopCols();
+    if (id==="gb-table") refreshGbCols();
+    if (id==="tt-table") refreshTtCols();
+  });
+});
+document.getElementById("tt-group").addEventListener("change", refreshTtGroups);
+
+// =====================================================================
+// TOOLS: HISTOGRAM BUTTON
+// =====================================================================
+document.getElementById("hist-go").onclick = () => {
+  const t = document.getElementById("hist-table").value;
+  const c = document.getElementById("hist-col").value;
+  if (!t || !c) return;
+  const info = db.exec(`PRAGMA table_info(${t})`)[0];
+  const type = info.values.find(r => r[1] === c)?.[2] || "TEXT";
+  showHistogram(t, c, type);
+  sfx.click();
+};
+
+// =====================================================================
+// TOOLS: CORRELATION
+// =====================================================================
+document.getElementById("corr-go").onclick = () => {
+  const t = document.getElementById("corr-table").value;
+  if (!t) return;
+  const numCols = colsOf(t, ty => ty==="INTEGER" || ty==="REAL");
+  const out = document.getElementById("corr-result");
+  if (numCols.length < 2) { out.innerHTML = `<div class="muted">Need at least 2 numeric columns.</div>`; return; }
+  const where = numCols.map(c=>`"${c}" IS NOT NULL`).join(" AND ");
+  const r = runSql(`SELECT ${numCols.map(c=>`"${c}"`).join(",")} FROM ${t} WHERE ${where}`, "corr");
+  if (!r.ok || !r.rows.length) { out.innerHTML = `<div class="muted">No data.</div>`; return; }
+  const data = numCols.map((c,i) => r.rows.map(row => Number(row[c])));
+  function corr(x, y) {
+    const n = x.length;
+    const mx = x.reduce((a,b)=>a+b,0)/n;
+    const my = y.reduce((a,b)=>a+b,0)/n;
+    let num = 0, dx2 = 0, dy2 = 0;
+    for (let i=0;i<n;i++) { const dx = x[i]-mx, dy = y[i]-my; num += dx*dy; dx2 += dx*dx; dy2 += dy*dy; }
+    return dx2 && dy2 ? num / Math.sqrt(dx2*dy2) : 0;
+  }
+  const matrix = numCols.map((_, i) => numCols.map((_, j) => corr(data[i], data[j])));
+  let html = `<table class="corr-table"><tr><th></th>${numCols.map(c=>`<th>${c.slice(0,12)}</th>`).join("")}</tr>`;
+  for (let i=0;i<numCols.length;i++) {
+    html += `<tr><th>${numCols[i].slice(0,12)}</th>`;
+    for (let j=0;j<numCols.length;j++) {
+      const v = matrix[i][j];
+      const bg = v >= 0
+        ? `rgba(167,139,250,${Math.abs(v)*0.7})`
+        : `rgba(248,113,113,${Math.abs(v)*0.7})`;
+      html += `<td class="corr-cell" style="background:${bg}">${v.toFixed(2)}</td>`;
+    }
+    html += `</tr>`;
+  }
+  html += `</table>`;
+  out.innerHTML = html;
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: FORECAST
+// =====================================================================
+document.getElementById("fc-go").onclick = () => {
+  const t = document.getElementById("fc-table").value;
+  const dateCol = document.getElementById("fc-date").value;
+  const valCol = document.getElementById("fc-val").value;
+  const agg = document.getElementById("fc-agg").value;
+  const n = parseInt(document.getElementById("fc-n").value, 10) || 14;
+  if (!t || !dateCol || !valCol) return;
+  const r = runSql(`SELECT "${dateCol}" d, ${agg}("${valCol}") v FROM ${t} WHERE "${dateCol}" IS NOT NULL GROUP BY "${dateCol}" ORDER BY 1`, "forecast");
+  const out = document.getElementById("fc-result");
+  if (!r.ok || !r.rows.length) { out.innerHTML = `<div class="muted">${r.error || "No data"}</div>`; return; }
+  const xs = r.rows.map((_, i) => i);
+  const ys = r.rows.map(row => Number(row.v));
+  const n0 = xs.length;
+  const mx = xs.reduce((a,b)=>a+b,0)/n0;
+  const my = ys.reduce((a,b)=>a+b,0)/n0;
+  let num = 0, den = 0;
+  for (let i=0;i<n0;i++) { num += (xs[i]-mx)*(ys[i]-my); den += (xs[i]-mx)**2; }
+  const slope = den ? num/den : 0;
+  const intercept = my - slope*mx;
+  const lastDate = r.rows[r.rows.length-1].d;
+  const projected = [];
+  let cursor = new Date(lastDate);
+  if (isNaN(cursor)) cursor = new Date();
+  for (let i=1;i<=n;i++) {
+    cursor.setDate(cursor.getDate()+1);
+    projected.push({ d: cursor.toISOString().slice(0,10), v: intercept + slope*(n0-1+i) });
+  }
+  const labels = r.rows.map(row => row.d).concat(projected.map(p => p.d));
+  const actual = ys.concat(new Array(n).fill(null));
+  const forecast = new Array(n0-1).fill(null).concat([ys[ys.length-1]], projected.map(p => p.v));
+  out.innerHTML = `<div class="muted">slope=${fmt(slope)} · intercept=${fmt(intercept)} · ${n0} historic, ${n} projected</div>
+                   <div class="chart-wrap" style="margin-top:8px"><canvas id="fc-canvas" height="160"></canvas></div>`;
+  new Chart(document.getElementById("fc-canvas"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Actual", data: actual, borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.1)", tension: 0.2, pointRadius: 1 },
+        { label: "Forecast", data: forecast, borderColor: "#4ade80", borderDash: [4,4], backgroundColor: "rgba(74,222,128,0.05)", tension: 0.2, pointRadius: 1 }
+      ]
+    },
+    options: chartOpts(true)
+  });
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: OUTLIERS
+// =====================================================================
+document.getElementById("ol-go").onclick = () => {
+  const t = document.getElementById("ol-table").value;
+  const col = document.getElementById("ol-col").value;
+  if (!t || !col) return;
+  const r = db.exec(`SELECT "${col}" FROM ${t} WHERE "${col}" IS NOT NULL`)[0];
+  const out = document.getElementById("ol-result");
+  if (!r) { out.innerHTML = `<div class="muted">No data</div>`; return; }
+  const vals = r.values.map(v => Number(v[0])).filter(Number.isFinite).sort((a,b)=>a-b);
+  if (!vals.length) { out.innerHTML = `<div class="muted">Not numeric</div>`; return; }
+  const q1 = vals[Math.floor(vals.length*0.25)];
+  const q3 = vals[Math.floor(vals.length*0.75)];
+  const iqr = q3 - q1;
+  const lo = q1 - 1.5*iqr, hi = q3 + 1.5*iqr;
+  const r2 = runSql(`SELECT * FROM ${t} WHERE "${col}" < ${lo} OR "${col}" > ${hi} ORDER BY "${col}" DESC LIMIT 50`, "outliers");
+  let html = `<div class="muted">Q1=${fmt(q1)} · Q3=${fmt(q3)} · IQR=${fmt(iqr)} · bounds [${fmt(lo)}, ${fmt(hi)}] · ${r2.row_count || 0} outliers</div>`;
+  out.innerHTML = html;
+  if (r2.ok && r2.rows.length) {
+    const div = document.createElement("div");
+    renderTable(r2.rows, div, 30);
+    out.appendChild(div);
+  }
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: PERIOD-OVER-PERIOD
+// =====================================================================
+document.getElementById("pop-go").onclick = () => {
+  const t = document.getElementById("pop-table").value;
+  const dateCol = document.getElementById("pop-date").value;
+  const valCol = document.getElementById("pop-val").value;
+  const agg = document.getElementById("pop-agg").value;
+  const period = document.getElementById("pop-period").value;
+  if (!t || !dateCol || !valCol) return;
+  const fmtMap = {
+    day:     `"${dateCol}"`,
+    week:    `strftime('%Y-W%W', "${dateCol}")`,
+    month:   `strftime('%Y-%m', "${dateCol}")`,
+    quarter: `strftime('%Y', "${dateCol}") || '-Q' || ((CAST(strftime('%m',"${dateCol}") AS INT)-1)/3 + 1)`,
+    year:    `strftime('%Y', "${dateCol}")`
+  };
+  const sql = `SELECT ${fmtMap[period]} period, ${agg}("${valCol}") val FROM ${t} WHERE "${dateCol}" IS NOT NULL GROUP BY 1 ORDER BY 1`;
+  const r = runSql(sql, "period");
+  const out = document.getElementById("pop-result");
+  if (!r.ok) { out.innerHTML = `<div class="muted">${r.error}</div>`; return; }
+  const tableRows = r.rows.map((row, i) => {
+    const prev = i > 0 ? Number(r.rows[i-1].val) : null;
+    const cur = Number(row.val);
+    const lift = prev != null && prev !== 0 ? ((cur - prev)/prev * 100).toFixed(1) + "%" : "—";
+    return { period: row.period, value: fmt(cur), lift };
+  });
+  const div = document.createElement("div");
+  renderTable(tableRows, div, 100);
+  const labels = r.rows.map(row => row.period);
+  const values = r.rows.map(row => Number(row.val));
+  out.innerHTML = "";
+  out.appendChild(div);
+  out.insertAdjacentHTML("beforeend", `<div class="chart-wrap" style="margin-top:10px"><canvas id="pop-canvas" height="160"></canvas></div>`);
+  new Chart(document.getElementById("pop-canvas"), {
+    type: "bar",
+    data: { labels, datasets: [{ data: values, backgroundColor: "#a78bfa" }]},
+    options: chartOpts(false)
+  });
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: GROUP-BY BUILDER
+// =====================================================================
+document.getElementById("gb-go").onclick = () => {
+  const t = document.getElementById("gb-table").value;
+  const by = document.getElementById("gb-by").value;
+  const val = document.getElementById("gb-val").value;
+  const agg = document.getElementById("gb-agg").value;
+  const order = document.getElementById("gb-order").value;
+  if (!t || !by) return;
+  const aggExpr = (agg === "COUNT") ? "COUNT(*)" : `${agg}("${val}")`;
+  const sql = `SELECT "${by}", ${aggExpr} AS metric FROM ${t} GROUP BY "${by}" ORDER BY metric ${order} LIMIT 100`;
+  const r = runSql(sql, "groupby");
+  const out = document.getElementById("gb-result");
+  if (!r.ok) { out.innerHTML = `<div class="muted">${r.error}</div>`; return; }
+  out.innerHTML = `<div class="muted"><code>${escapeHtml(sql)}</code></div>`;
+  const div = document.createElement("div");
+  renderTable(r.rows, div, 100);
+  out.appendChild(div);
+  if (r.rows.length) {
+    out.insertAdjacentHTML("beforeend", `<div class="chart-wrap" style="margin-top:10px"><canvas id="gb-canvas" height="${Math.min(360, Math.max(140, r.rows.length*16))}"></canvas></div>`);
+    new Chart(document.getElementById("gb-canvas"), {
+      type: "bar",
+      data: { labels: r.rows.map(row => String(row[by]).slice(0,20)), datasets: [{ data: r.rows.map(row => Number(row.metric)), backgroundColor: "#a78bfa" }]},
+      options: { ...chartOpts(false), indexAxis: r.rows.length > 8 ? 'y' : 'x' }
+    });
+  }
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: T-TEST
+// =====================================================================
+document.getElementById("tt-go").onclick = () => {
+  const t = document.getElementById("tt-table").value;
+  const g = document.getElementById("tt-group").value;
+  const v = document.getElementById("tt-val").value;
+  const a = document.getElementById("tt-a").value;
+  const b = document.getElementById("tt-b").value;
+  if (!t || !g || !v || !a || !b || a === b) {
+    document.getElementById("tt-result").innerHTML = `<div class="muted">Pick two distinct groups.</div>`;
+    return;
+  }
+  const ra = db.exec(`SELECT "${v}" FROM ${t} WHERE "${g}" = ? AND "${v}" IS NOT NULL`, [a])[0];
+  const rb = db.exec(`SELECT "${v}" FROM ${t} WHERE "${g}" = ? AND "${v}" IS NOT NULL`, [b])[0];
+  const xa = ra ? ra.values.map(r => Number(r[0])).filter(Number.isFinite) : [];
+  const xb = rb ? rb.values.map(r => Number(r[0])).filter(Number.isFinite) : [];
+  if (xa.length < 2 || xb.length < 2) { document.getElementById("tt-result").innerHTML = `<div class="muted">Need ≥2 values per group.</div>`; return; }
+  const mean = a => a.reduce((x,y)=>x+y,0)/a.length;
+  const variance = a => { const m = mean(a); return a.reduce((x,y)=>x+(y-m)**2,0)/(a.length-1); };
+  const ma = mean(xa), mb = mean(xb), va = variance(xa), vb = variance(xb);
+  const se = Math.sqrt(va/xa.length + vb/xb.length);
+  const t_stat = (ma - mb) / se;
+  // Welch-Satterthwaite df
+  const df = (va/xa.length + vb/xb.length)**2 / ((va/xa.length)**2/(xa.length-1) + (vb/xb.length)**2/(xb.length-1));
+  // Two-tailed p-value approx via t distribution → normal for large df, otherwise use Student's t
+  // Simple approximation: erf-based for normal tail
+  function erf(x) {
+    const sign = Math.sign(x); x = Math.abs(x);
+    const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+    const tt = 1/(1+p*x);
+    const y = 1 - (((((a5*tt+a4)*tt)+a3)*tt+a2)*tt+a1)*tt*Math.exp(-x*x);
+    return sign*y;
+  }
+  // Approx: p ≈ 2*(1 - Phi(|t|)) for df>30, otherwise rough
+  const z = Math.abs(t_stat);
+  const p = 2 * (1 - 0.5*(1 + erf(z/Math.sqrt(2))));
+  const sig = p < 0.001 ? "***" : p < 0.01 ? "**" : p < 0.05 ? "*" : "ns";
+  const lift = mb !== 0 ? ((ma - mb)/Math.abs(mb)*100).toFixed(1) + "%" : "—";
+  document.getElementById("tt-result").innerHTML = `
+    <div class="stat-grid">
+      <div><div class="lbl">${escapeHtml(a)} mean</div><div class="val">${fmt(ma)}</div></div>
+      <div><div class="lbl">${escapeHtml(b)} mean</div><div class="val">${fmt(mb)}</div></div>
+      <div><div class="lbl">${escapeHtml(a)} n</div><div class="val">${xa.length}</div></div>
+      <div><div class="lbl">${escapeHtml(b)} n</div><div class="val">${xb.length}</div></div>
+      <div><div class="lbl">t-stat</div><div class="val">${t_stat.toFixed(3)}</div></div>
+      <div><div class="lbl">p-value</div><div class="val">${p < 0.0001 ? "<0.0001" : p.toFixed(4)} ${sig}</div></div>
+      <div><div class="lbl">df (Welch)</div><div class="val">${df.toFixed(1)}</div></div>
+      <div><div class="lbl">A vs B lift</div><div class="val">${lift}</div></div>
+    </div>
+    <div class="muted">Welch's two-sample t-test, two-tailed. *** p&lt;0.001, ** p&lt;0.01, * p&lt;0.05, ns = not significant.</div>
+  `;
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: JOINS
+// =====================================================================
+let lastJoinSql = null;
+document.getElementById("jn-go").onclick = () => {
+  const l  = document.getElementById("jn-left").value;
+  const r  = document.getElementById("jn-right").value;
+  const lk = document.getElementById("jn-leftkey").value;
+  const rk = document.getElementById("jn-rightkey").value;
+  const ty = document.getElementById("jn-type").value;
+  if (!l || !r || !lk || !rk) return;
+  // SQLite has no RIGHT JOIN — emulate by swapping operands
+  let preview, save;
+  if (ty === "RIGHT") {
+    save    = `SELECT * FROM ${r} LEFT JOIN ${l} ON ${l}."${lk}" = ${r}."${rk}"`;
+  } else {
+    save    = `SELECT * FROM ${l} ${ty} JOIN ${r} ON ${l}."${lk}" = ${r}."${rk}"`;
+  }
+  preview = save + " LIMIT 200";
+  lastJoinSql = save;
+  const result = runSql(preview, "join");
+  const out = document.getElementById("jn-result");
+  if (result.ok) {
+    out.innerHTML = `<div class="muted"><code>${escapeHtml(preview)}</code></div>`;
+    const div = document.createElement("div");
+    out.appendChild(div);
+    renderTable(result.rows, div, 30);
+    sfx.success();
+  } else {
+    out.innerHTML = `<div class="muted">${result.error}</div>`;
+    sfx.err();
+  }
+};
+document.getElementById("jn-save").onclick = () => {
+  if (!lastJoinSql) { showToast("Run preview first","err"); return; }
+  const name = prompt("Save joined result as table named:", "joined");
+  if (!name) return;
+  const tn = uniqueTableName(sanitizeIdent(name, "joined"));
+  try {
+    db.run(`CREATE TABLE ${tn} AS ${lastJoinSql}`);
+    currentTables.push(tn);
+    refreshAll();
+    showToast(`Saved as ${tn}`, "success");
+    sfx.success();
+  } catch(e) { showToast("Error: " + e.message, "err"); sfx.err(); }
+};
+
+// =====================================================================
+// TOOLS: COHORT RETENTION
+// =====================================================================
+document.getElementById("ch-go").onclick = () => {
+  const t = document.getElementById("ch-table").value;
+  const user = document.getElementById("ch-user").value;
+  const signup = document.getElementById("ch-signup").value;
+  const activity = document.getElementById("ch-activity").value;
+  const period = document.getElementById("ch-period").value;
+  if (!t || !user || !signup || !activity) return;
+  const fmtP = period === "week" ? "%Y-W%W" : "%Y-%m";
+  const sql = `WITH cohorts AS (
+    SELECT "${user}" u, strftime('${fmtP}', MIN("${signup}")) cohort
+    FROM ${t} WHERE "${signup}" IS NOT NULL GROUP BY "${user}"
+  ), activity AS (
+    SELECT DISTINCT "${user}" u, strftime('${fmtP}', "${activity}") period
+    FROM ${t} WHERE "${activity}" IS NOT NULL
+  )
+  SELECT c.cohort, a.period, COUNT(DISTINCT c.u) users
+  FROM cohorts c JOIN activity a ON c.u = a.u
+  WHERE a.period >= c.cohort
+  GROUP BY 1, 2 ORDER BY 1, 2`;
+  const r = runSql(sql, "cohort");
+  const out = document.getElementById("ch-result");
+  if (!r.ok) { out.innerHTML = `<div class="muted">${r.error}</div>`; return; }
+  if (!r.rows.length) { out.innerHTML = `<div class="muted">No cohort data.</div>`; return; }
+
+  const cohorts = [...new Set(r.rows.map(row => row.cohort))].sort();
+  const periods = [...new Set(r.rows.map(row => row.period))].sort();
+  const periodIdx = Object.fromEntries(periods.map((p,i)=>[p,i]));
+  const cohortBase = {};
+  for (const c of cohorts) {
+    const baseRow = r.rows.find(row => row.cohort === c && row.period === c);
+    cohortBase[c] = baseRow ? Number(baseRow.users) : 0;
+  }
+  const maxOffset = Math.min(13, Math.max(...cohorts.map(c => periods.length - (periodIdx[c] ?? 0))));
+  let html = `<table class="result-table"><tr><th>Cohort</th><th>Size</th>`;
+  for (let i=0;i<maxOffset;i++) html += `<th>+${i}</th>`;
+  html += `</tr>`;
+  for (const c of cohorts) {
+    const base = cohortBase[c] || 0;
+    html += `<tr><th>${c}</th><td>${base}</td>`;
+    for (let i=0;i<maxOffset;i++) {
+      const targetPeriod = periods[(periodIdx[c] ?? 0) + i];
+      if (!targetPeriod) { html += `<td></td>`; continue; }
+      const row = r.rows.find(rw => rw.cohort === c && rw.period === targetPeriod);
+      const users = row ? Number(row.users) : 0;
+      const pct = base ? (users/base*100) : 0;
+      const intensity = Math.min(1, pct/100);
+      const bg = `rgba(167,139,250,${intensity*0.55})`;
+      html += `<td class="corr-cell" style="background:${bg}">${pct.toFixed(0)}%</td>`;
+    }
+    html += `</tr>`;
+  }
+  html += `</table>`;
+  out.innerHTML = html;
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: LINEAR REGRESSION
+// =====================================================================
+document.getElementById("lr-go").onclick = () => {
+  const t = document.getElementById("lr-table").value;
+  const y = document.getElementById("lr-y").value;
+  const x = document.getElementById("lr-x").value;
+  if (!t || !x || !y) return;
+  const r = runSql(`SELECT "${x}" x, "${y}" y FROM ${t} WHERE "${x}" IS NOT NULL AND "${y}" IS NOT NULL`, "linreg");
+  const out = document.getElementById("lr-result");
+  if (!r.ok || !r.rows.length) { out.innerHTML = `<div class="muted">${r.error||"No data"}</div>`; return; }
+  const xs = r.rows.map(row => Number(row.x));
+  const ys = r.rows.map(row => Number(row.y));
+  const n = xs.length;
+  const mx = xs.reduce((a,b)=>a+b,0)/n;
+  const my = ys.reduce((a,b)=>a+b,0)/n;
+  let num = 0, dx2 = 0, dy2 = 0;
+  for (let i=0;i<n;i++) { num += (xs[i]-mx)*(ys[i]-my); dx2 += (xs[i]-mx)**2; dy2 += (ys[i]-my)**2; }
+  const slope = dx2 ? num/dx2 : 0;
+  const intercept = my - slope*mx;
+  let ssRes = 0;
+  for (let i=0;i<n;i++) { const pred = slope*xs[i]+intercept; ssRes += (ys[i]-pred)**2; }
+  const r2 = dy2 ? 1 - ssRes/dy2 : 0;
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  out.innerHTML = `
+    <div class="stat-grid">
+      <div><div class="lbl">slope</div><div class="val">${slope.toFixed(4)}</div></div>
+      <div><div class="lbl">intercept</div><div class="val">${intercept.toFixed(4)}</div></div>
+      <div><div class="lbl">R²</div><div class="val">${r2.toFixed(4)}</div></div>
+      <div><div class="lbl">n</div><div class="val">${n}</div></div>
+    </div>
+    <div class="muted">y = ${slope.toFixed(4)} · x + ${intercept.toFixed(4)}</div>
+    <div class="chart-wrap" style="margin-top:8px"><canvas id="lr-canvas" height="200"></canvas></div>
+  `;
+  new Chart(document.getElementById("lr-canvas"), {
+    type: "scatter",
+    data: {
+      datasets: [
+        { label: "data", data: xs.map((v,i)=>({x:v,y:ys[i]})), backgroundColor: "#a78bfa", pointRadius: 3 },
+        { label: "fit",  type: "line", data: [{x:minX,y:slope*minX+intercept},{x:maxX,y:slope*maxX+intercept}],
+          borderColor: "#4ade80", borderWidth: 2, pointRadius: 0, fill: false, showLine: true }
+      ]
+    },
+    options: chartOpts(true)
+  });
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: PARETO
+// =====================================================================
+document.getElementById("pa-go").onclick = () => {
+  const t = document.getElementById("pa-table").value;
+  const cat = document.getElementById("pa-cat").value;
+  const val = document.getElementById("pa-val").value;
+  const agg = document.getElementById("pa-agg").value;
+  if (!t || !cat) return;
+  const aggExpr = agg === "COUNT" ? "COUNT(*)" : `${agg}("${val}")`;
+  const r = runSql(`SELECT "${cat}", ${aggExpr} v FROM ${t} GROUP BY "${cat}" ORDER BY v DESC LIMIT 30`, "pareto");
+  const out = document.getElementById("pa-result");
+  if (!r.ok || !r.rows.length) { out.innerHTML = `<div class="muted">${r.error||"No data"}</div>`; return; }
+  const total = r.rows.reduce((a,b)=>a+Number(b.v),0);
+  const labels = r.rows.map(row => String(row[cat]).slice(0,20));
+  const values = r.rows.map(row => Number(row.v));
+  let cum = 0;
+  const cumPct = values.map(v => { cum += v; return total ? (cum/total*100) : 0; });
+  const eightyIdx = cumPct.findIndex(p => p >= 80);
+  out.innerHTML = `<div class="muted">Top ${(eightyIdx+1) || values.length} of ${values.length} categories drive 80% of total · ${fmt(total)} total</div>
+                   <div class="chart-wrap" style="margin-top:8px"><canvas id="pa-canvas" height="220"></canvas></div>`;
+  new Chart(document.getElementById("pa-canvas"), {
+    data: {
+      labels,
+      datasets: [
+        { type: "bar", label: agg, data: values, backgroundColor: "#a78bfa", yAxisID: "y" },
+        { type: "line", label: "Cumulative %", data: cumPct, borderColor: "#4ade80",
+          backgroundColor: "rgba(74,222,128,0.1)", tension: 0.2, yAxisID: "y2", pointRadius: 2 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: "#444" }} },
+      scales: {
+        x: { ticks: { color: "#666", font: { size: 9 }}, grid: { color: "#eee" }},
+        y: { position: "left",  ticks: { color: "#666", font: { size: 9 }}, grid: { color: "#eee" }},
+        y2:{ position: "right", min: 0, max: 100,
+             ticks: { color: "#666", font: { size: 9 }, callback: v => v + "%" },
+             grid: { display: false } }
+      }
+    }
+  });
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: A/B SAMPLE SIZE
+// =====================================================================
+function inverseNormal(p) {
+  // Beasley-Springer-Moro approximation
+  const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+  const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
+  const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+  const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+  const pLow = 0.02425;
+  let q, r;
+  if (p < pLow) {
+    q = Math.sqrt(-2*Math.log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+           ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  } else if (p <= 1-pLow) {
+    q = p - 0.5; r = q*q;
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q /
+           (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  } else {
+    q = Math.sqrt(-2*Math.log(1-p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+            ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+}
+document.getElementById("ss-go").onclick = () => {
+  const p1 = parseFloat(document.getElementById("ss-base").value)/100;
+  const mde = parseFloat(document.getElementById("ss-mde").value)/100;
+  const conf = parseFloat(document.getElementById("ss-conf").value)/100;
+  const power = parseFloat(document.getElementById("ss-power").value)/100;
+  const out = document.getElementById("ss-result");
+  if (!(p1 > 0 && p1 < 1 && mde > 0 && p1 + mde < 1 && conf > 0 && conf < 1 && power > 0 && power < 1)) {
+    out.innerHTML = `<div class="muted">Invalid inputs.</div>`; return;
+  }
+  const p2 = p1 + mde;
+  const za = inverseNormal(1 - (1-conf)/2);
+  const zb = inverseNormal(power);
+  const pBar = (p1+p2)/2;
+  const n = Math.pow(za * Math.sqrt(2*pBar*(1-pBar)) + zb * Math.sqrt(p1*(1-p1) + p2*(1-p2)), 2) / Math.pow(p2-p1, 2);
+  out.innerHTML = `
+    <div class="stat-grid">
+      <div><div class="lbl">per variant</div><div class="val">${Math.ceil(n).toLocaleString()}</div></div>
+      <div><div class="lbl">total</div><div class="val">${(Math.ceil(n)*2).toLocaleString()}</div></div>
+      <div><div class="lbl">baseline</div><div class="val">${(p1*100).toFixed(1)}%</div></div>
+      <div><div class="lbl">target</div><div class="val">${(p2*100).toFixed(1)}%</div></div>
+    </div>
+    <div class="muted">Two-tailed two-proportion z-test, equal allocation, ${(conf*100).toFixed(0)}% confidence, ${(power*100).toFixed(0)}% power.</div>
+  `;
+  sfx.success();
+};
+
+// =====================================================================
+// SHARED STATS HELPERS
+// =====================================================================
+function erfApprox(x) {
+  const sign = Math.sign(x); x = Math.abs(x);
+  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+  const tt = 1/(1+p*x);
+  const y = 1 - (((((a5*tt+a4)*tt)+a3)*tt+a2)*tt+a1)*tt*Math.exp(-x*x);
+  return sign*y;
+}
+function normalCdf(z) { return 0.5*(1 + erfApprox(z/Math.sqrt(2))); }
+
+// Matrix utilities for multi-variable regression
+function matMul(A, B) {
+  const m = A.length, n = A[0].length, p = B[0].length;
+  const C = Array.from({length: m}, () => new Array(p).fill(0));
+  for (let i=0;i<m;i++) for (let j=0;j<p;j++) for (let k=0;k<n;k++) C[i][j] += A[i][k]*B[k][j];
+  return C;
+}
+function matT(A) { return A[0].map((_,j) => A.map(row => row[j])); }
+function matInv(A) {
+  const n = A.length;
+  const M = A.map((row, i) => [...row, ...Array.from({length:n}, (_, j) => i===j ? 1 : 0)]);
+  for (let i=0;i<n;i++) {
+    let maxRow = i;
+    for (let k=i+1;k<n;k++) if (Math.abs(M[k][i]) > Math.abs(M[maxRow][i])) maxRow = k;
+    [M[i], M[maxRow]] = [M[maxRow], M[i]];
+    if (Math.abs(M[i][i]) < 1e-12) throw new Error("Singular matrix (X columns may be collinear)");
+    const pivot = M[i][i];
+    for (let j=0;j<2*n;j++) M[i][j] /= pivot;
+    for (let k=0;k<n;k++) if (k !== i) {
+      const factor = M[k][i];
+      for (let j=0;j<2*n;j++) M[k][j] -= factor * M[i][j];
+    }
+  }
+  return M.map(row => row.slice(n));
+}
+
+// =====================================================================
+// TOOLS: FUNNEL ANALYSIS
+// =====================================================================
+document.getElementById("fn-go").onclick = () => {
+  const t = document.getElementById("fn-table").value;
+  const user = document.getElementById("fn-user").value;
+  const event = document.getElementById("fn-event").value;
+  const steps = document.getElementById("fn-steps").value.split("\n").map(s=>s.trim()).filter(Boolean);
+  const out = document.getElementById("fn-result");
+  if (!t || !user || !event || steps.length < 2) { out.innerHTML = `<div class="muted">Need a table, user col, event col, and ≥2 steps.</div>`; return; }
+  const counts = [];
+  for (let i = 0; i < steps.length; i++) {
+    const conditions = steps.slice(0, i+1).map((s, j) =>
+      `EXISTS (SELECT 1 FROM ${t} t${j} WHERE t${j}."${user}" = u."${user}" AND t${j}."${event}" = '${s.replace(/'/g,"''")}')`
+    ).join(" AND ");
+    const sql = `SELECT COUNT(DISTINCT u."${user}") c FROM ${t} u WHERE ${conditions}`;
+    const r = runSql(sql, "funnel");
+    counts.push(r.ok && r.rows[0] ? Number(r.rows[0].c) : 0);
+  }
+  const base = counts[0] || 1;
+  const rows = steps.map((s, i) => ({
+    step: s,
+    users: counts[i],
+    "vs start": ((counts[i]/base)*100).toFixed(1) + "%",
+    "step drop": i > 0 ? ((1 - counts[i]/(counts[i-1]||1))*100).toFixed(1) + "%" : "—"
+  }));
+  out.innerHTML = "";
+  const div = document.createElement("div");
+  renderTable(rows, div, 20);
+  out.appendChild(div);
+  out.insertAdjacentHTML("beforeend", `<div class="chart-wrap" style="margin-top:8px"><canvas id="fn-canvas" height="180"></canvas></div>`);
+  new Chart(document.getElementById("fn-canvas"), {
+    type: "bar",
+    data: { labels: steps, datasets: [{ data: counts, backgroundColor: "#a78bfa" }]},
+    options: chartOpts(false)
+  });
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: WINDOW FUNCTIONS
+// =====================================================================
+document.getElementById("wn-go").onclick = () => {
+  const t = document.getElementById("wn-table").value;
+  const f = document.getElementById("wn-func").value;
+  const v = document.getElementById("wn-val").value;
+  const p = document.getElementById("wn-part").value;
+  const o = document.getElementById("wn-order").value;
+  if (!t || !o) return;
+  const partClause = p ? `PARTITION BY "${p}" ` : "";
+  let expr;
+  if (f === "ROW_NUMBER" || f === "RANK" || f === "DENSE_RANK") expr = `${f}() OVER (${partClause}ORDER BY "${o}")`;
+  else if (f === "LAG")  expr = `LAG("${v}") OVER (${partClause}ORDER BY "${o}")`;
+  else if (f === "LEAD") expr = `LEAD("${v}") OVER (${partClause}ORDER BY "${o}")`;
+  else if (f === "SUM (running)") expr = `SUM("${v}") OVER (${partClause}ORDER BY "${o}" ROWS UNBOUNDED PRECEDING)`;
+  else if (f === "AVG (running)") expr = `AVG("${v}") OVER (${partClause}ORDER BY "${o}" ROWS UNBOUNDED PRECEDING)`;
+  const sql = `SELECT *, ${expr} AS window_result FROM ${t} ORDER BY ${p ? `"${p}", `: ""}"${o}" LIMIT 100`;
+  const r = runSql(sql, "window");
+  const out = document.getElementById("wn-result");
+  if (!r.ok) { out.innerHTML = `<div class="muted">${r.error}</div>`; return; }
+  out.innerHTML = `<div class="muted"><code>${escapeHtml(sql)}</code></div>`;
+  const div = document.createElement("div");
+  renderTable(r.rows, div, 50);
+  out.appendChild(div);
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: QUANTILE BUCKETING
+// =====================================================================
+document.getElementById("qb-go").onclick = () => {
+  const t = document.getElementById("qb-table").value;
+  const c = document.getElementById("qb-col").value;
+  const n = parseInt(document.getElementById("qb-n").value);
+  if (!t || !c) return;
+  const newCol = sanitizeIdent(c + "_q" + n, "bucket");
+  try {
+    db.run(`ALTER TABLE ${t} ADD COLUMN "${newCol}" INTEGER`);
+    db.run(`UPDATE ${t} SET "${newCol}" = (
+      SELECT bucket FROM (
+        SELECT rowid AS rid, NTILE(${n}) OVER (ORDER BY "${c}") AS bucket
+        FROM ${t} WHERE "${c}" IS NOT NULL
+      ) sub WHERE sub.rid = ${t}.rowid
+    )`);
+    refreshAll();
+    document.getElementById("qb-result").innerHTML = `<div class="muted">Added column "${newCol}" with values 1..${n}</div>`;
+    showToast(`Added ${newCol}`, "success");
+    sfx.success();
+  } catch(e) { showToast("Error: " + e.message, "err"); sfx.err(); }
+};
+
+// =====================================================================
+// TOOLS: NORMALIZE
+// =====================================================================
+document.getElementById("nm-go").onclick = () => {
+  const t = document.getElementById("nm-table").value;
+  const c = document.getElementById("nm-col").value;
+  const method = document.getElementById("nm-method").value;
+  if (!t || !c) return;
+  try {
+    if (method === "z-score") {
+      const stats = db.exec(`SELECT AVG("${c}") FROM ${t} WHERE "${c}" IS NOT NULL`)[0].values[0];
+      const mean = Number(stats[0]);
+      const varRow = db.exec(`SELECT AVG(("${c}" - ${mean})*("${c}" - ${mean})) FROM ${t} WHERE "${c}" IS NOT NULL`)[0].values[0];
+      const stdev = Math.sqrt(Number(varRow[0]));
+      if (!stdev) { document.getElementById("nm-result").innerHTML = `<div class="muted">Stdev is zero — can't standardize.</div>`; return; }
+      const newCol = sanitizeIdent(c + "_z", "z");
+      db.run(`ALTER TABLE ${t} ADD COLUMN "${newCol}" REAL`);
+      db.run(`UPDATE ${t} SET "${newCol}" = ("${c}" - ${mean}) / ${stdev} WHERE "${c}" IS NOT NULL`);
+      document.getElementById("nm-result").innerHTML = `<div class="muted">Added "${newCol}" — mean=${fmt(mean)}, stdev=${fmt(stdev)}</div>`;
+    } else {
+      const stats = db.exec(`SELECT MIN("${c}"), MAX("${c}") FROM ${t} WHERE "${c}" IS NOT NULL`)[0].values[0];
+      const min = Number(stats[0]), max = Number(stats[1]), range = max - min;
+      if (!range) { document.getElementById("nm-result").innerHTML = `<div class="muted">All values equal — can't normalize.</div>`; return; }
+      const newCol = sanitizeIdent(c + "_norm", "norm");
+      db.run(`ALTER TABLE ${t} ADD COLUMN "${newCol}" REAL`);
+      db.run(`UPDATE ${t} SET "${newCol}" = ("${c}" - ${min}) / ${range} WHERE "${c}" IS NOT NULL`);
+      document.getElementById("nm-result").innerHTML = `<div class="muted">Added "${newCol}" — min=${fmt(min)}, max=${fmt(max)}</div>`;
+    }
+    refreshAll();
+    sfx.success();
+  } catch(e) { showToast("Error: " + e.message, "err"); sfx.err(); }
+};
+
+// =====================================================================
+// TOOLS: GEOGRAPHIC MAP
+// =====================================================================
+let mapInstance = null;
+document.getElementById("mp-go").onclick = () => {
+  const t = document.getElementById("mp-table").value;
+  const lat = document.getElementById("mp-lat").value;
+  const lon = document.getElementById("mp-lon").value;
+  const label = document.getElementById("mp-label").value;
+  const size = document.getElementById("mp-size").value;
+  if (!t || !lat || !lon) return;
+  const sql = `SELECT "${lat}" lat, "${lon}" lon${label?`, "${label}" label`:""}${size?`, "${size}" sz`:""} FROM ${t} WHERE "${lat}" IS NOT NULL AND "${lon}" IS NOT NULL LIMIT 2000`;
+  const r = runSql(sql, "map");
+  const out = document.getElementById("mp-result");
+  if (!r.ok || !r.rows.length) { out.innerHTML = `<div class="muted">${r.error || "No points"}</div>`; return; }
+  out.innerHTML = `<div id="map-canvas" style="height:420px; border-radius:4px; overflow:hidden; background:#111"></div>`;
+  if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+  const isLight = document.body.dataset.theme === "light";
+  mapInstance = L.map("map-canvas").setView([Number(r.rows[0].lat), Number(r.rows[0].lon)], 4);
+  const tileUrl = isLight
+    ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+    : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png";
+  L.tileLayer(tileUrl, { attribution: "© OSM, © CARTO", subdomains: "abcd" }).addTo(mapInstance);
+  const sizes = size ? r.rows.map(row => Number(row.sz)) : null;
+  const maxSize = sizes ? Math.max(...sizes.filter(Number.isFinite)) : 1;
+  const bounds = [];
+  for (const row of r.rows) {
+    const ll = [Number(row.lat), Number(row.lon)];
+    if (!Number.isFinite(ll[0]) || !Number.isFinite(ll[1])) continue;
+    bounds.push(ll);
+    const radius = sizes ? 4 + (Number(row.sz)/maxSize)*16 : 6;
+    L.circleMarker(ll, { radius, color: "#a78bfa", fillColor: "#a78bfa", fillOpacity: 0.55, weight: 1 })
+      .bindPopup(escapeHtml(String(row.label || "")))
+      .addTo(mapInstance);
+  }
+  if (bounds.length > 1) mapInstance.fitBounds(bounds, { padding: [30,30] });
+  setTimeout(() => mapInstance.invalidateSize(), 100);
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: SANKEY
+// =====================================================================
+let sankeyChart = null;
+document.getElementById("sk-go").onclick = () => {
+  const t = document.getElementById("sk-table").value;
+  const src = document.getElementById("sk-src").value;
+  const tgt = document.getElementById("sk-tgt").value;
+  const val = document.getElementById("sk-val").value;
+  if (!t || !src || !tgt) return;
+  const expr = val ? `SUM("${val}")` : `COUNT(*)`;
+  const r = runSql(`SELECT "${src}" src, "${tgt}" tgt, ${expr} flow FROM ${t} WHERE "${src}" IS NOT NULL AND "${tgt}" IS NOT NULL GROUP BY 1, 2 ORDER BY flow DESC LIMIT 60`, "sankey");
+  const out = document.getElementById("sk-result");
+  if (!r.ok || !r.rows.length) { out.innerHTML = `<div class="muted">${r.error || "No data"}</div>`; return; }
+  const data = r.rows.map(row => ({ from: String(row.src), to: String(row.tgt), flow: Number(row.flow) }));
+  out.innerHTML = `<div class="chart-wrap"><canvas id="sk-canvas" height="260"></canvas></div>`;
+  if (sankeyChart) sankeyChart.destroy();
+  try {
+    sankeyChart = new Chart(document.getElementById("sk-canvas"), {
+      type: "sankey",
+      data: { datasets: [{
+        data,
+        colorFrom: () => "#a78bfa",
+        colorTo:   () => "#06b6d4",
+        colorMode: "gradient",
+        borderWidth: 0
+      }]},
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }} }
+    });
+    sfx.success();
+  } catch(e) {
+    out.innerHTML = `<div class="muted">Sankey plugin failed to load: ${e.message}</div>`;
+  }
+};
+
+// =====================================================================
+// TOOLS: SURVIVAL CURVE (Kaplan-Meier)
+// =====================================================================
+document.getElementById("sv-go").onclick = () => {
+  const t = document.getElementById("sv-table").value;
+  const time = document.getElementById("sv-time").value;
+  const ev = document.getElementById("sv-event").value;
+  if (!t || !time || !ev) return;
+  const r = runSql(`SELECT "${time}" t, "${ev}" e FROM ${t} WHERE "${time}" IS NOT NULL AND "${ev}" IS NOT NULL ORDER BY 1`, "survival");
+  const out = document.getElementById("sv-result");
+  if (!r.ok || !r.rows.length) { out.innerHTML = `<div class="muted">${r.error || "No data"}</div>`; return; }
+  const events = r.rows.map(row => ({ t: Number(row.t), e: Number(row.e) })).filter(o => Number.isFinite(o.t));
+  events.sort((a,b) => a.t - b.t);
+  const eventTimes = [...new Set(events.filter(e => e.e === 1).map(e => e.t))].sort((a,b) => a-b);
+  let surv = 1;
+  const survT = [0], survS = [1];
+  for (const tt of eventTimes) {
+    const atRisk = events.filter(e => e.t >= tt).length;
+    const deaths = events.filter(e => e.t === tt && e.e === 1).length;
+    if (atRisk > 0) {
+      surv *= (1 - deaths/atRisk);
+      survT.push(tt);
+      survS.push(surv);
+    }
+  }
+  const medianIdx = survS.findIndex(s => s <= 0.5);
+  const median = medianIdx >= 0 ? survT[medianIdx] : "not reached";
+  const eventCount = events.filter(e => e.e === 1).length;
+  out.innerHTML = `<div class="stat-grid">
+      <div><div class="lbl">N</div><div class="val">${events.length}</div></div>
+      <div><div class="lbl">events</div><div class="val">${eventCount}</div></div>
+      <div><div class="lbl">censored</div><div class="val">${events.length - eventCount}</div></div>
+      <div><div class="lbl">median</div><div class="val">${median}</div></div>
+    </div>
+    <div class="chart-wrap" style="margin-top:8px"><canvas id="sv-canvas" height="200"></canvas></div>`;
+  new Chart(document.getElementById("sv-canvas"), {
+    type: "line",
+    data: { labels: survT, datasets: [{ data: survS, borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.15)", fill: true, tension: 0, stepped: "before", pointRadius: 0 }]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }},
+      scales: {
+        x: { ticks: { color: "#666", font: { size: 9 }}, grid: { color: "#eee" }},
+        y: { min: 0, max: 1, ticks: { color: "#666", font: { size: 9 }, callback: v => (v*100).toFixed(0) + "%" }, grid: { color: "#eee" }}
+      }
+    }
+  });
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: MULTI-VARIABLE REGRESSION
+// =====================================================================
+document.getElementById("mr-go").onclick = () => {
+  const t = document.getElementById("mr-table").value;
+  const y = document.getElementById("mr-y").value;
+  const xCols = [...document.getElementById("mr-x").selectedOptions].map(o => o.value);
+  const out = document.getElementById("mr-result");
+  if (!t || !y || !xCols.length) { out.innerHTML = `<div class="muted">Pick a y column and at least one X column.</div>`; return; }
+  const allCols = [y, ...xCols];
+  const where = allCols.map(c => `"${c}" IS NOT NULL`).join(" AND ");
+  const r = runSql(`SELECT ${allCols.map(c => `"${c}"`).join(",")} FROM ${t} WHERE ${where}`, "multireg");
+  if (!r.ok || r.rows.length < xCols.length + 2) { out.innerHTML = `<div class="muted">${r.error || "Insufficient data"}</div>`; return; }
+  const yArr = r.rows.map(row => [Number(row[y])]);
+  const X = r.rows.map(row => [1, ...xCols.map(c => Number(row[c]))]);
+  try {
+    const Xt = matT(X);
+    const XtX = matMul(Xt, X);
+    const XtXinv = matInv(XtX);
+    const Xty = matMul(Xt, yArr);
+    const beta = matMul(XtXinv, Xty).map(row => row[0]);
+    const yPred = X.map(row => row.reduce((sum, v, i) => sum + v*beta[i], 0));
+    const yMean = yArr.reduce((a, b) => a + b[0], 0) / yArr.length;
+    let ssRes = 0, ssTot = 0;
+    for (let i=0;i<yArr.length;i++) {
+      ssRes += (yArr[i][0] - yPred[i])**2;
+      ssTot += (yArr[i][0] - yMean)**2;
+    }
+    const r2 = ssTot ? 1 - ssRes/ssTot : 0;
+    const n = yArr.length, k = xCols.length;
+    const adjR2 = 1 - (1-r2)*(n-1)/(n-k-1);
+    let html = `<div class="stat-grid">
+      <div><div class="lbl">R²</div><div class="val">${r2.toFixed(4)}</div></div>
+      <div><div class="lbl">adj R²</div><div class="val">${adjR2.toFixed(4)}</div></div>
+      <div><div class="lbl">n</div><div class="val">${n}</div></div>
+      <div><div class="lbl">k</div><div class="val">${k}</div></div>
+    </div>`;
+    html += `<table class="result-table"><tr><th>variable</th><th>coefficient</th></tr>`;
+    html += `<tr><td><i>(intercept)</i></td><td>${beta[0].toFixed(4)}</td></tr>`;
+    for (let i=0;i<xCols.length;i++) html += `<tr><td>${escapeHtml(xCols[i])}</td><td>${beta[i+1].toFixed(4)}</td></tr>`;
+    html += `</table>`;
+    out.innerHTML = html;
+    sfx.success();
+  } catch(e) { out.innerHTML = `<div class="muted">${e.message}</div>`; sfx.err(); }
+};
+
+// =====================================================================
+// TOOLS: CHI-SQUARED
+// =====================================================================
+function chi2pval(x, df) {
+  if (df <= 0 || x < 0) return 1;
+  // Wilson-Hilferty cube-root normal approximation
+  const z = (Math.cbrt(x/df) - (1 - 2/(9*df))) / Math.sqrt(2/(9*df));
+  return 1 - normalCdf(z);
+}
+document.getElementById("cs-go").onclick = () => {
+  const t = document.getElementById("cs-table").value;
+  const a = document.getElementById("cs-a").value;
+  const b = document.getElementById("cs-b").value;
+  const out = document.getElementById("cs-result");
+  if (!t || !a || !b) return;
+  if (a === b) { out.innerHTML = `<div class="muted">Pick two different columns.</div>`; return; }
+  const r = runSql(`SELECT "${a}" a, "${b}" b, COUNT(*) c FROM ${t} WHERE "${a}" IS NOT NULL AND "${b}" IS NOT NULL GROUP BY 1, 2`, "chi2");
+  if (!r.ok || !r.rows.length) { out.innerHTML = `<div class="muted">${r.error || "No data"}</div>`; return; }
+  const aVals = [...new Set(r.rows.map(row => row.a))].sort();
+  const bVals = [...new Set(r.rows.map(row => row.b))].sort();
+  if (aVals.length > 30 || bVals.length > 30) { out.innerHTML = `<div class="muted">Too many categories (${aVals.length}×${bVals.length}). Cap at 30 each.</div>`; return; }
+  const matrix = aVals.map(av => bVals.map(bv => {
+    const row = r.rows.find(rw => rw.a === av && rw.b === bv);
+    return row ? Number(row.c) : 0;
+  }));
+  const rowSums = matrix.map(row => row.reduce((x,y)=>x+y, 0));
+  const colSums = bVals.map((_,j) => matrix.reduce((x,y) => x + y[j], 0));
+  const total = rowSums.reduce((x,y)=>x+y, 0);
+  let chi2 = 0;
+  for (let i=0;i<aVals.length;i++) for (let j=0;j<bVals.length;j++) {
+    const expected = (rowSums[i]*colSums[j]) / total;
+    if (expected > 0) chi2 += ((matrix[i][j] - expected)**2) / expected;
+  }
+  const df = (aVals.length-1)*(bVals.length-1);
+  const p = chi2pval(chi2, df);
+  const sig = p < 0.001 ? "***" : p < 0.01 ? "**" : p < 0.05 ? "*" : "ns";
+  let html = `<div class="stat-grid">
+    <div><div class="lbl">χ²</div><div class="val">${chi2.toFixed(3)}</div></div>
+    <div><div class="lbl">df</div><div class="val">${df}</div></div>
+    <div><div class="lbl">p-value</div><div class="val">${p < 0.0001 ? "<0.0001" : p.toFixed(4)} ${sig}</div></div>
+    <div><div class="lbl">N</div><div class="val">${total}</div></div>
+  </div>`;
+  html += `<table class="result-table"><tr><th>${escapeHtml(a)} \\ ${escapeHtml(b)}</th>${bVals.map(v => `<th>${escapeHtml(String(v))}</th>`).join("")}<th>total</th></tr>`;
+  for (let i=0;i<aVals.length;i++) {
+    html += `<tr><th>${escapeHtml(String(aVals[i]))}</th>${matrix[i].map(c => `<td>${c}</td>`).join("")}<td>${rowSums[i]}</td></tr>`;
+  }
+  html += `<tr><th>total</th>${colSums.map(c => `<td>${c}</td>`).join("")}<td>${total}</td></tr></table>`;
+  out.innerHTML = html;
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: DATA DICTIONARY
+// =====================================================================
+let dataDict = [];
+function buildDict() {
+  dataDict = [];
+  for (const t of currentTables) {
+    try {
+      const info = db.exec(`PRAGMA table_info(${t})`)[0];
+      const total = db.exec(`SELECT COUNT(*) FROM ${t}`)[0].values[0][0];
+      for (const row of info.values) {
+        const col = row[1], type = row[2];
+        const nonNull = db.exec(`SELECT COUNT("${col}") FROM ${t}`)[0].values[0][0];
+        const distinct = db.exec(`SELECT COUNT(DISTINCT "${col}") FROM ${t}`)[0].values[0][0];
+        const sample = db.exec(`SELECT "${col}" FROM ${t} WHERE "${col}" IS NOT NULL LIMIT 3`)[0];
+        const samples = sample ? sample.values.map(v => String(v[0])).join(", ") : "";
+        dataDict.push({
+          table: t, column: col, type: type || "TEXT",
+          rows: total, distinct, null_pct: total ? Math.round(100*(1 - nonNull/total)) : 0,
+          sample: samples.slice(0, 60),
+          note: localStorage.getItem(`dict_${t}_${col}`) || ""
+        });
+      }
+    } catch(e) {}
+  }
+  renderDict();
+}
+function renderDict() {
+  const out = document.getElementById("dd-result");
+  if (!dataDict.length) { out.innerHTML = `<div class="muted">No data — click Build dictionary first.</div>`; return; }
+  let html = `<table class="result-table"><tr><th>Table</th><th>Column</th><th>Type</th><th>Distinct</th><th>Null %</th><th>Sample</th><th>Note</th></tr>`;
+  dataDict.forEach((d, i) => {
+    html += `<tr>
+      <td>${escapeHtml(d.table)}</td>
+      <td><b>${escapeHtml(d.column)}</b></td>
+      <td>${d.type}</td>
+      <td>${d.distinct}</td>
+      <td>${d.null_pct}%</td>
+      <td>${escapeHtml(d.sample)}</td>
+      <td><input type="text" data-i="${i}" value="${escapeHtml(d.note)}" placeholder="add note…" style="font-size:11px; padding:3px 6px; min-width:140px"></td>
+    </tr>`;
+  });
+  html += `</table>`;
+  out.innerHTML = html;
+  out.querySelectorAll("input[data-i]").forEach(inp => {
+    inp.addEventListener("change", e => {
+      const i = parseInt(e.target.dataset.i);
+      dataDict[i].note = e.target.value;
+      localStorage.setItem(`dict_${dataDict[i].table}_${dataDict[i].column}`, e.target.value);
+    });
+  });
+}
+document.getElementById("dd-build").onclick = () => { buildDict(); sfx.click(); };
+document.getElementById("dd-md").onclick = () => {
+  if (!dataDict.length) buildDict();
+  let md = `# Data Dictionary\n\nGenerated ${new Date().toISOString().slice(0,10)}\n`;
+  let curTable = "";
+  for (const d of dataDict) {
+    if (d.table !== curTable) {
+      md += `\n## ${d.table}\n\n| Column | Type | Distinct | Null % | Sample | Note |\n|---|---|---|---|---|---|\n`;
+      curTable = d.table;
+    }
+    md += `| **${d.column}** | ${d.type} | ${d.distinct} | ${d.null_pct}% | ${d.sample} | ${d.note} |\n`;
+  }
+  download("data_dictionary.md", md, "text/markdown");
+};
+document.getElementById("dd-csv").onclick = () => {
+  if (!dataDict.length) buildDict();
+  const cols = ["table","column","type","rows","distinct","null_pct","sample","note"];
+  const csv = [cols.join(",")].concat(
+    dataDict.map(d => cols.map(c => csvEscape(d[c])).join(","))
+  ).join("\n");
+  download("data_dictionary.csv", csv, "text/csv");
+};
+
+// =====================================================================
+// TOOLS: DATE DIMENSIONS
+// =====================================================================
+document.getElementById("dx-go").onclick = () => {
+  const t = document.getElementById("dx-table").value;
+  const c = document.getElementById("dx-col").value;
+  if (!t || !c) return;
+  const adds = [
+    { suffix: "_year",       expr: `CAST(strftime('%Y', "${c}") AS INTEGER)` },
+    { suffix: "_quarter",    expr: `(CAST(strftime('%m', "${c}") AS INTEGER) - 1) / 3 + 1` },
+    { suffix: "_month",      expr: `CAST(strftime('%m', "${c}") AS INTEGER)` },
+    { suffix: "_week",       expr: `CAST(strftime('%W', "${c}") AS INTEGER)` },
+    { suffix: "_dow",        expr: `CAST(strftime('%w', "${c}") AS INTEGER)` },
+    { suffix: "_dom",        expr: `CAST(strftime('%d', "${c}") AS INTEGER)` },
+    { suffix: "_doy",        expr: `CAST(strftime('%j', "${c}") AS INTEGER)` },
+    { suffix: "_is_weekend", expr: `CASE WHEN strftime('%w', "${c}") IN ('0','6') THEN 1 ELSE 0 END` }
+  ];
+  let added = 0;
+  for (const a of adds) {
+    const cn = sanitizeIdent(c + a.suffix, "d");
+    try {
+      db.run(`ALTER TABLE ${t} ADD COLUMN "${cn}" INTEGER`);
+      db.run(`UPDATE ${t} SET "${cn}" = ${a.expr}`);
+      added++;
+    } catch(e) {}
+  }
+  refreshAll();
+  document.getElementById("dx-out").innerHTML = `<div class="muted">Added ${added} columns: year, quarter, month, week, dow (0=Sun), dom, doy, is_weekend</div>`;
+  showToast(`Added ${added} date columns`, "success");
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: SESSIONIZATION
+// =====================================================================
+document.getElementById("sn-go").onclick = () => {
+  const t = document.getElementById("sn-table").value;
+  const u = document.getElementById("sn-user").value;
+  const ts = document.getElementById("sn-ts").value;
+  const gap = parseInt(document.getElementById("sn-gap").value) || 30;
+  const out = document.getElementById("sn-out");
+  if (!t || !u || !ts) return;
+  try {
+    const r = db.exec(`SELECT rowid, "${u}" u, "${ts}" ts FROM ${t} WHERE "${u}" IS NOT NULL AND "${ts}" IS NOT NULL ORDER BY "${u}", "${ts}"`)[0];
+    if (!r) { out.innerHTML = `<div class="muted">No data.</div>`; return; }
+    const updates = [];
+    let lastUser = null, lastTs = null, sid = 0;
+    for (const row of r.values) {
+      const [rid, user, tsVal] = row;
+      const tsDate = new Date(tsVal);
+      if (!Number.isFinite(tsDate.getTime())) { updates.push([rid, null]); continue; }
+      if (user !== lastUser) sid = 1;
+      else if ((tsDate - lastTs) / 60000 > gap) sid++;
+      updates.push([rid, sid]);
+      lastUser = user; lastTs = tsDate;
+    }
+    try { db.run(`ALTER TABLE ${t} DROP COLUMN session_id`); } catch {}
+    db.run(`ALTER TABLE ${t} ADD COLUMN session_id INTEGER`);
+    const stmt = db.prepare(`UPDATE ${t} SET session_id = ? WHERE rowid = ?`);
+    for (const [rid, s] of updates) stmt.run([s, rid]);
+    stmt.free();
+    refreshAll();
+    const totalSessions = db.exec(`SELECT COUNT(*) FROM (SELECT DISTINCT "${u}", session_id FROM ${t} WHERE session_id IS NOT NULL)`)[0].values[0][0];
+    const totalUsers = db.exec(`SELECT COUNT(DISTINCT "${u}") FROM ${t}`)[0].values[0][0];
+    out.innerHTML = `<div class="muted">Created ${totalSessions} sessions across ${totalUsers} users with ${gap}-minute idle threshold. Avg ${(totalSessions/totalUsers).toFixed(1)} sessions/user.</div>`;
+    showToast("Sessionized", "success");
+    sfx.success();
+  } catch(e) { out.innerHTML = `<div class="muted">${e.message}</div>`; sfx.err(); }
+};
+
+// =====================================================================
+// TOOLS: ROLLING WINDOW
+// =====================================================================
+document.getElementById("rw-go").onclick = () => {
+  const t = document.getElementById("rw-table").value;
+  const v = document.getElementById("rw-val").value;
+  const o = document.getElementById("rw-order").value;
+  const f = document.getElementById("rw-func").value;
+  const n = parseInt(document.getElementById("rw-n").value) || 7;
+  const out = document.getElementById("rw-out");
+  if (!t || !v || !o) return;
+  try {
+    const newCol = sanitizeIdent(`${v}_${f.toLowerCase()}_${n}`, "rw");
+    try { db.run(`ALTER TABLE ${t} DROP COLUMN "${newCol}"`); } catch {}
+    db.run(`ALTER TABLE ${t} ADD COLUMN "${newCol}" REAL`);
+    db.run(`UPDATE ${t} SET "${newCol}" = (
+      SELECT v FROM (
+        SELECT rowid AS rid, ${f}("${v}") OVER (ORDER BY "${o}" ROWS BETWEEN ${n-1} PRECEDING AND CURRENT ROW) AS v
+        FROM ${t}
+      ) sub WHERE sub.rid = ${t}.rowid
+    )`);
+    refreshAll();
+    out.innerHTML = `<div class="muted">Added "${newCol}" — ${n}-period rolling ${f.toLowerCase()} ordered by ${o}</div>`;
+    showToast(`Added ${newCol}`, "success");
+    sfx.success();
+  } catch(e) { out.innerHTML = `<div class="muted">${e.message}</div>`; sfx.err(); }
+};
+
+// =====================================================================
+// TOOLS: K-MEANS
+// =====================================================================
+document.getElementById("km-go").onclick = () => {
+  const t = document.getElementById("km-table").value;
+  const k = parseInt(document.getElementById("km-k").value) || 3;
+  const feats = [...document.getElementById("km-feats").selectedOptions].map(o => o.value);
+  const out = document.getElementById("km-out");
+  if (!t || feats.length < 1) { out.innerHTML = `<div class="muted">Pick at least one feature column.</div>`; return; }
+  const where = feats.map(c => `"${c}" IS NOT NULL`).join(" AND ");
+  const r = db.exec(`SELECT rowid, ${feats.map(c => `"${c}"`).join(",")} FROM ${t} WHERE ${where}`)[0];
+  if (!r || r.values.length < k) { out.innerHTML = `<div class="muted">Need at least ${k} non-null rows.</div>`; return; }
+  const rids = r.values.map(row => row[0]);
+  const X = r.values.map(row => row.slice(1).map(Number));
+  const dim = feats.length;
+  // Standardize
+  const means = new Array(dim).fill(0);
+  const stds  = new Array(dim).fill(0);
+  for (const v of X) for (let i=0;i<dim;i++) means[i] += v[i];
+  for (let i=0;i<dim;i++) means[i] /= X.length;
+  for (const v of X) for (let i=0;i<dim;i++) stds[i] += (v[i]-means[i])**2;
+  for (let i=0;i<dim;i++) stds[i] = Math.sqrt(stds[i]/X.length) || 1;
+  const Xz = X.map(v => v.map((x,i) => (x-means[i])/stds[i]));
+  // K-means++ init
+  const idx0 = Math.floor(Math.random()*Xz.length);
+  const centroids = [Xz[idx0].slice()];
+  while (centroids.length < k) {
+    const dists = Xz.map(p => Math.min(...centroids.map(c => {
+      let s = 0; for (let i=0;i<dim;i++) s += (p[i]-c[i])**2; return s;
+    })));
+    const sum = dists.reduce((a,b)=>a+b,0);
+    let target = Math.random()*sum, pickIdx = 0;
+    for (let i=0;i<dists.length;i++) { target -= dists[i]; if (target <= 0) { pickIdx = i; break; } }
+    centroids.push(Xz[pickIdx].slice());
+  }
+  let labels = new Array(Xz.length).fill(0);
+  const dist = (a,b) => { let s=0; for (let i=0;i<a.length;i++) s += (a[i]-b[i])**2; return s; };
+  for (let iter=0;iter<60;iter++) {
+    let changed = false;
+    for (let i=0;i<Xz.length;i++) {
+      let best = 0, bd = dist(Xz[i], centroids[0]);
+      for (let j=1;j<k;j++) {
+        const d = dist(Xz[i], centroids[j]);
+        if (d < bd) { bd = d; best = j; }
+      }
+      if (labels[i] !== best) { labels[i] = best; changed = true; }
+    }
+    if (!changed) break;
+    const sums = Array.from({length:k}, () => new Array(dim).fill(0));
+    const counts = new Array(k).fill(0);
+    for (let i=0;i<Xz.length;i++) {
+      counts[labels[i]]++;
+      for (let j=0;j<dim;j++) sums[labels[i]][j] += Xz[i][j];
+    }
+    for (let j=0;j<k;j++) if (counts[j] > 0) for (let i=0;i<dim;i++) centroids[j][i] = sums[j][i]/counts[j];
+  }
+  // Write cluster_id
+  try {
+    try { db.run(`ALTER TABLE ${t} DROP COLUMN cluster_id`); } catch {}
+    db.run(`ALTER TABLE ${t} ADD COLUMN cluster_id INTEGER`);
+    const stmt = db.prepare(`UPDATE ${t} SET cluster_id = ? WHERE rowid = ?`);
+    for (let i=0;i<rids.length;i++) stmt.run([labels[i]+1, rids[i]]);
+    stmt.free();
+  } catch(e) { out.innerHTML = `<div class="muted">${e.message}</div>`; return; }
+  refreshAll();
+  // Render cluster summary
+  const sizes = new Array(k).fill(0);
+  for (const l of labels) sizes[l]++;
+  let html = `<div class="muted">Added cluster_id column · ${k} clusters · features: ${feats.join(", ")}</div>`;
+  html += `<table class="result-table"><tr><th>cluster</th><th>n</th><th>%</th>`;
+  for (const f of feats) html += `<th>${escapeHtml(f)} center</th>`;
+  html += `</tr>`;
+  for (let j=0;j<k;j++) {
+    const center = centroids[j].map((z,i) => z*stds[i] + means[i]);
+    html += `<tr><td>${j+1}</td><td>${sizes[j]}</td><td>${(sizes[j]/labels.length*100).toFixed(1)}%</td>`;
+    for (const c of center) html += `<td>${fmt(c)}</td>`;
+    html += `</tr>`;
+  }
+  html += `</table>`;
+  out.innerHTML = html;
+  sfx.success();
+};
+
+// =====================================================================
+// TOOLS: DATA ASSERTIONS
+// =====================================================================
+document.getElementById("da-text").value = localStorage.getItem("assertions") || "";
+document.getElementById("da-go").onclick = () => {
+  const text = document.getElementById("da-text").value;
+  localStorage.setItem("assertions", text);
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  const out = document.getElementById("da-out");
+  if (!lines.length) { out.innerHTML = `<div class="muted">No assertions.</div>`; return; }
+  const results = [];
+  for (const line of lines) {
+    const idx = line.indexOf("|");
+    const desc = idx >= 0 ? line.slice(0, idx).trim() : "(unnamed)";
+    const sql = idx >= 0 ? line.slice(idx+1).trim() : line;
+    try {
+      const res = db.exec(sql);
+      const violations = res.length ? res[0].values.length : 0;
+      results.push({ ok: violations === 0, status: violations === 0 ? "✓ pass" : `✕ ${violations} rows`, description: desc, sql });
+    } catch(e) {
+      results.push({ ok: false, status: "⚠ error", description: desc, sql, error: String(e.message||e) });
+    }
+  }
+  const passed = results.filter(r => r.ok).length;
+  let html = `<div class="muted">${passed} of ${results.length} passed</div>`;
+  html += `<table class="result-table"><tr><th>Status</th><th>Description</th><th>Query</th></tr>`;
+  for (const r of results) {
+    const color = r.status.startsWith("✓") ? "var(--success)" : r.status.startsWith("✕") ? "var(--err)" : "var(--warn)";
+    html += `<tr><td style="color:${color};font-weight:600;white-space:nowrap">${r.status}</td><td>${escapeHtml(r.description)}</td><td><code style="font-size:10px">${escapeHtml(r.sql.slice(0,80))}</code></td></tr>`;
+  }
+  html += `</table>`;
+  out.innerHTML = html;
+  sfx.success();
+};
+
+// =====================================================================
+// EXPLAIN QUERY PLAN
+// =====================================================================
+document.getElementById("sql-explain").onclick = () => {
+  const sql = document.getElementById("sql-text").value.trim();
+  if (!sql) return;
+  const r = runSql("EXPLAIN QUERY PLAN " + sql);  // no source = not logged
+  const out = document.getElementById("sql-result");
+  out.innerHTML = "";
+  const meta = document.createElement("div");
+  meta.className = "muted";
+  meta.textContent = "Query plan:";
+  out.appendChild(meta);
+  if (r.ok) {
+    const div = document.createElement("div");
+    out.appendChild(div);
+    renderTable(r.rows, div, 50);
+    sfx.click();
+  } else {
+    out.innerHTML += `<div class="muted" style="color:var(--err)">${r.error}</div>`;
+    sfx.err();
+  }
+};
+
+// =====================================================================
+// HEATMAP COLORIZE FOR PIVOT
+// =====================================================================
+function colorizePivotTable(container) {
+  const table = container.querySelector("table.result-table");
+  if (!table) return;
+  const cells = table.querySelectorAll("tbody tr td, tr td");
+  if (!cells.length) return;
+  const values = [];
+  cells.forEach(td => {
+    if (td.querySelector("th")) return;
+    const n = Number(String(td.textContent).replace(/,/g,""));
+    if (Number.isFinite(n)) values.push(n);
+  });
+  if (values.length < 2) return;
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = max - min || 1;
+  cells.forEach(td => {
+    const n = Number(String(td.textContent).replace(/,/g,""));
+    if (Number.isFinite(n)) {
+      const intensity = (n - min) / range;
+      td.style.background = `rgba(167, 139, 250, ${intensity * 0.55})`;
+    }
+  });
+}
+
+// =====================================================================
+// STAKEHOLDER SUMMARIZER
+// =====================================================================
+async function callModelText(prompt) {
+  const provider = currentProvider();
+  if (provider === "claude") {
+    const key = (localStorage.getItem("claude_key") || document.getElementById("key").value).trim();
+    if (!key) throw new Error("Enter your Anthropic API key first.");
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{
+        "content-type":"application/json",
+        "x-api-key": key,
+        "anthropic-version":"2023-06-01",
+        "anthropic-dangerous-direct-browser-access":"true"
+      },
+      body: JSON.stringify({
+        model: currentModel(),
+        max_tokens: 1024,
+        messages: [{ role:"user", content: prompt }]
+      })
+    });
+    if (!r.ok) throw new Error("Claude " + r.status + ": " + (await r.text()).slice(0,400));
+    const json = await r.json();
+    return (json.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+  } else {
+    const key = (localStorage.getItem("gemini_key") || document.getElementById("key").value).trim();
+    if (!key) throw new Error("Enter your Google AI Studio API key first.");
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/" + currentModel() + ":generateContent?key=" + encodeURIComponent(key);
+    const r = await fetch(url, {
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body: JSON.stringify({
+        contents: [{ role:"user", parts:[{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 1024 }
+      })
+    });
+    if (!r.ok) throw new Error("Gemini " + r.status + ": " + (await r.text()).slice(0,400));
+    const json = await r.json();
+    const parts = json.candidates?.[0]?.content?.parts || [];
+    return parts.filter(p => p.text).map(p => p.text).join("\n");
+  }
+}
+document.getElementById("summarize-btn").onclick = async () => {
+  if (!lastReport) return;
+  const r = lastReport;
+  const prompt = `You are a senior analyst writing for executive stakeholders. Given this analysis, produce three deliverables:
+
+**Slack** — 1-2 sentences, casual, action-oriented, under 280 chars
+
+**Email** — 3-4 sentences, professional, with a clear "what to do" if applicable
+
+**Exec brief** — 3 bullet points: what we found / why it matters / what we recommend
+
+Be concrete with numbers. Don't hedge. Don't restate the question.
+
+QUESTION: ${lastQuestion}
+
+HEADLINE: ${r.headline}
+
+HYPOTHESES:
+${(r.hypotheses||[]).map(h => `[${h.status}] ${h.statement} — ${h.evidence}`).join("\n")}
+
+ANALYSIS:
+${r.summary_markdown}`;
+  openModal(`<h3>Stakeholder Summary <button class="close">×</button></h3>
+    <div id="summary-modal-body"><div class="muted"><span class="thinking-pulse"></span><span class="thinking-pulse"></span><span class="thinking-pulse"></span> Generating…</div></div>`);
+  try {
+    const text = await callModelText(prompt);
+    const body = document.getElementById("summary-modal-body");
+    body.innerHTML = `<pre id="sum-text" style="background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:14px; white-space:pre-wrap; font-family:inherit; font-size:12px; max-height:55vh; overflow:auto; line-height:1.55"></pre><button class="ghost" id="sum-copy" style="margin-top:8px">Copy to clipboard</button>`;
+    body.querySelector("#sum-text").textContent = text;
+    document.getElementById("sum-copy").onclick = () => {
+      navigator.clipboard.writeText(text).then(() => showToast("Copied", "success"));
+    };
+    sfx.success();
+  } catch(e) {
+    const body = document.getElementById("summary-modal-body");
+    if (body) body.innerHTML = `<div class="muted">${escapeHtml(e.message)}</div>`;
+    sfx.err();
+  }
+};
+
+// =====================================================================
+// CLEANING PANEL
+// =====================================================================
+function refreshCleanPanel() {
+  const sel = document.getElementById("clean-table-pick");
+  const prev = sel.value;
+  sel.innerHTML = currentTables.map(t => `<option>${t}</option>`).join("");
+  if (currentTables.includes(prev)) sel.value = prev;
+  renderCleanList();
+}
+function renderCleanList() {
+  const list = document.getElementById("clean-list");
+  const t = document.getElementById("clean-table-pick").value;
+  if (!t) { list.innerHTML = `<div class="muted">No tables.</div>`; return; }
+  let info;
+  try { info = db.exec(`PRAGMA table_info(${t})`)[0]; } catch(e) { list.innerHTML = `<div class="muted">${e.message}</div>`; return; }
+  if (!info) { list.innerHTML = `<div class="muted">Empty table.</div>`; return; }
+  list.innerHTML = "";
+  for (const r of info.values) {
+    const col = r[1], type = r[2];
+    const row = document.createElement("div");
+    row.className = "col-row";
+    row.innerHTML = `
+      <span class="col-name">${col}</span>
+      <span class="col-type">${type||"TEXT"}</span>
+      <span class="col-actions">
+        <button class="ghost tiny" data-op="rename">Rename</button>
+        <button class="ghost tiny" data-op="cast">Retype</button>
+        <button class="ghost tiny" data-op="fillnull">Fill nulls</button>
+        <button class="ghost tiny" data-op="trim">Trim</button>
+        <button class="ghost tiny" data-op="lower">lower</button>
+        <button class="ghost tiny" data-op="upper">UPPER</button>
+        <button class="ghost tiny danger" data-op="drop">Drop</button>
+      </span>`;
+    row.querySelectorAll("button").forEach(b => { b.onclick = () => doColOp(t, col, b.dataset.op); });
+    list.appendChild(row);
+  }
+}
+function doColOp(table, col, op) {
+  try {
+    if (op === "rename") {
+      const nn = prompt("New name for " + col, col);
+      if (!nn || nn === col) return;
+      db.run(`ALTER TABLE ${table} RENAME COLUMN "${col}" TO "${sanitizeIdent(nn,"col")}"`);
+    } else if (op === "drop") {
+      if (!confirm("Drop column " + col + "?")) return;
+      db.run(`ALTER TABLE ${table} DROP COLUMN "${col}"`);
+    } else if (op === "fillnull") {
+      const v = prompt(`Fill NULLs in ${col} with what value?`, "0");
+      if (v == null) return;
+      db.run(`UPDATE ${table} SET "${col}" = ? WHERE "${col}" IS NULL`, [v]);
+    } else if (op === "trim") {
+      db.run(`UPDATE ${table} SET "${col}" = TRIM("${col}") WHERE "${col}" IS NOT NULL`);
+    } else if (op === "lower") {
+      db.run(`UPDATE ${table} SET "${col}" = LOWER("${col}") WHERE "${col}" IS NOT NULL`);
+    } else if (op === "upper") {
+      db.run(`UPDATE ${table} SET "${col}" = UPPER("${col}") WHERE "${col}" IS NOT NULL`);
+    } else if (op === "cast") {
+      const t = prompt("New type: TEXT, INTEGER, or REAL", "REAL");
+      if (!t || !["TEXT","INTEGER","REAL"].includes(t.toUpperCase())) return;
+      const nt = t.toUpperCase();
+      const tmp = "__tmp_" + Date.now();
+      db.run(`ALTER TABLE ${table} RENAME COLUMN "${col}" TO "${tmp}"`);
+      db.run(`ALTER TABLE ${table} ADD COLUMN "${col}" ${nt}`);
+      db.run(`UPDATE ${table} SET "${col}" = CAST("${tmp}" AS ${nt})`);
+      db.run(`ALTER TABLE ${table} DROP COLUMN "${tmp}"`);
+    }
+    refreshAll();
+    showToast(`${op} on ${col}`, "success");
+    sfx.click();
+  } catch(e) { showToast("Error: " + e.message, "err"); sfx.err(); }
+}
+document.getElementById("clean-table-pick").addEventListener("change", renderCleanList);
+document.getElementById("dedupe-btn").onclick = () => {
+  const t = document.getElementById("clean-table-pick").value;
+  if (!t) return;
+  try {
+    const info = db.exec(`PRAGMA table_info(${t})`)[0];
+    const cols = info.values.map(r => `"${r[1]}"`).join(",");
+    const before = db.exec(`SELECT COUNT(*) FROM ${t}`)[0].values[0][0];
+    db.run(`DELETE FROM ${t} WHERE rowid NOT IN (SELECT MIN(rowid) FROM ${t} GROUP BY ${cols})`);
+    const after = db.exec(`SELECT COUNT(*) FROM ${t}`)[0].values[0][0];
+    refreshAll();
+    showToast(`Removed ${before-after} duplicates`, "success");
+    sfx.success();
+  } catch(e) { showToast("Error: "+e.message,"err"); sfx.err(); }
+};
+document.getElementById("add-col-btn").onclick = () => {
+  const t = document.getElementById("clean-table-pick").value;
+  if (!t) return;
+  const name = prompt("New column name:");
+  if (!name) return;
+  const expr = prompt("Expression (SQL), e.g. revenue - cost", "0");
+  if (!expr) return;
+  try {
+    const cn = sanitizeIdent(name,"col");
+    db.run(`ALTER TABLE ${t} ADD COLUMN "${cn}" REAL`);
+    db.run(`UPDATE ${t} SET "${cn}" = (${expr})`);
+    refreshAll();
+    showToast("Added " + cn, "success");
+    sfx.click();
+  } catch(e) { showToast("Error: "+e.message,"err"); sfx.err(); }
+};
+document.getElementById("parse-dates-btn").onclick = () => {
+  const t = document.getElementById("clean-table-pick").value;
+  if (!t) return;
+  // Find TEXT columns that look like dates
+  const info = db.exec(`PRAGMA table_info(${t})`)[0];
+  const textCols = info.values.filter(r => r[2] === "TEXT").map(r => r[1]);
+  let parsed = 0;
+  for (const col of textCols) {
+    try {
+      const sample = db.exec(`SELECT "${col}" FROM ${t} WHERE "${col}" IS NOT NULL LIMIT 20`)[0];
+      if (!sample) continue;
+      const dateLike = sample.values.every(v => {
+        const s = String(v[0]);
+        return /^\d{4}-\d{2}-\d{2}/.test(s) || /^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(s);
+      });
+      if (dateLike) {
+        db.run(`UPDATE ${t} SET "${col}" = strftime('%Y-%m-%d', "${col}") WHERE "${col}" IS NOT NULL`);
+        parsed++;
+      }
+    } catch {}
+  }
+  refreshAll();
+  showToast(parsed ? `Normalized ${parsed} date columns` : "No date-like columns found", parsed ? "success" : "info");
+};
+document.getElementById("drop-table-btn").onclick = () => {
+  const t = document.getElementById("clean-table-pick").value;
+  if (!t || !confirm("Drop table " + t + "?")) return;
+  try {
+    db.run(`DROP TABLE ${t}`);
+    currentTables = currentTables.filter(x => x !== t);
+    refreshAll();
+    showToast("Dropped " + t, "success");
+  } catch(e) { showToast("Error: "+e.message,"err"); }
+};
+
+// =====================================================================
+// PIVOT BUILDER
+// =====================================================================
+function refreshPivotPanel() {
+  const t = document.getElementById("piv-table");
+  const prev = t.value;
+  t.innerHTML = currentTables.map(x => `<option>${x}</option>`).join("");
+  if (currentTables.includes(prev)) t.value = prev;
+  renderPivotCols();
+}
+function renderPivotCols() {
+  const t = document.getElementById("piv-table").value;
+  if (!t) return;
+  let info;
+  try { info = db.exec(`PRAGMA table_info(${t})`)[0]; } catch(e) { return; }
+  if (!info) return;
+  const cols = info.values.map(r => r[1]);
+  for (const id of ["piv-rows","piv-vals"]) {
+    const sel = document.getElementById(id);
+    const prev = sel.value;
+    sel.innerHTML = cols.map(c => `<option>${c}</option>`).join("");
+    if (cols.includes(prev)) sel.value = prev;
+  }
+  const colSel = document.getElementById("piv-cols");
+  const prev = colSel.value;
+  colSel.innerHTML = `<option value="">(none)</option>` + cols.map(c => `<option>${c}</option>`).join("");
+  if (cols.includes(prev)) colSel.value = prev;
+}
+document.getElementById("piv-table").addEventListener("change", renderPivotCols);
+document.getElementById("piv-run").onclick = () => {
+  const t = document.getElementById("piv-table").value;
+  const rows = document.getElementById("piv-rows").value;
+  const cols = document.getElementById("piv-cols").value;
+  const vals = document.getElementById("piv-vals").value;
+  const agg = document.getElementById("piv-agg").value;
+  if (!t || !rows || !vals) return;
+  let sql;
+  try {
+    if (cols) {
+      const distinct = db.exec(`SELECT DISTINCT "${cols}" FROM ${t} WHERE "${cols}" IS NOT NULL ORDER BY 1 LIMIT 25`)[0];
+      const vlist = distinct ? distinct.values.map(r => r[0]) : [];
+      const cases = vlist.map(v =>
+        `${agg}(CASE WHEN "${cols}" = '${String(v).replace(/'/g,"''")}' THEN "${vals}" END) AS "${String(v).slice(0,30)}"`
+      ).join(", ");
+      sql = `SELECT "${rows}", ${cases} FROM ${t} GROUP BY "${rows}" ORDER BY 1`;
+    } else {
+      sql = `SELECT "${rows}", ${agg}("${vals}") AS "${agg.toLowerCase()}_${vals}" FROM ${t} GROUP BY "${rows}" ORDER BY 1`;
+    }
+    const r = runSql(sql, "pivot");
+    const out = document.getElementById("piv-result");
+    if (r.ok) {
+      out.innerHTML = `<div class="muted"><code>${escapeHtml(sql)}</code></div>`;
+      const tbl = document.createElement("div");
+      out.appendChild(tbl);
+      renderTable(r.rows, tbl, 100);
+      if (document.getElementById("piv-heatmap").checked) colorizePivotTable(tbl);
+      sfx.sql();
+    } else {
+      out.innerHTML = `<div class="muted">${r.error}</div>`;
+      sfx.err();
+    }
+  } catch(e) {
+    document.getElementById("piv-result").innerHTML = `<div class="muted">${e.message}</div>`;
+    sfx.err();
+  }
+};
+
+// =====================================================================
+// SQL EDITOR
+// =====================================================================
+let lastSqlResult = null;
+document.getElementById("sql-run").onclick = () => {
+  const sql = document.getElementById("sql-text").value.trim();
+  if (!sql) return;
+  const r = runSql(sql, "manual");
+  lastSqlResult = r;
+  const out = document.getElementById("sql-result");
+  out.innerHTML = "";
+  if (r.ok) {
+    const meta = document.createElement("div");
+    meta.className = "muted";
+    meta.textContent = `${r.row_count ?? r.rows.length} rows`;
+    out.appendChild(meta);
+    const tbl = document.createElement("div");
+    out.appendChild(tbl);
+    renderTable(r.rows, tbl, 100);
+    sfx.sql();
+  } else {
+    out.innerHTML = `<div class="muted" style="color:var(--err)">${r.error}</div>`;
+    sfx.err();
+  }
+};
+document.getElementById("sql-export-csv").onclick = () => {
+  if (!lastSqlResult || !lastSqlResult.ok || !lastSqlResult.rows.length) {
+    showToast("Run a query first", "err"); return;
+  }
+  const cols = Object.keys(lastSqlResult.rows[0]);
+  const csv = [cols.join(",")].concat(
+    lastSqlResult.rows.map(r => cols.map(c => csvEscape(r[c])).join(","))
+  ).join("\n");
+  download("query_result.csv", csv, "text/csv");
+};
+function csvEscape(v) {
+  if (v == null) return "";
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+}
+function download(name, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+// =====================================================================
+// GLOSSARY
+// =====================================================================
+document.getElementById("glossary-text").value = localStorage.getItem("glossary") || "";
+document.getElementById("glossary-save").onclick = () => {
+  const t = document.getElementById("glossary-text").value;
+  localStorage.setItem("glossary", t);
+  rebuildSchemaText();
+  showToast("Glossary saved", "success");
+  sfx.success();
+};
+
+// =====================================================================
+// SAVED ANALYSES
+// =====================================================================
+function getSaved() { try { return JSON.parse(localStorage.getItem("analyses") || "[]"); } catch { return []; } }
+function setSaved(arr) { localStorage.setItem("analyses", JSON.stringify(arr)); }
+function renderSaved() {
+  const list = document.getElementById("saved-list");
+  const arr = getSaved();
+  if (!arr.length) { list.innerHTML = `<div class="muted">No saved analyses yet.</div>`; return; }
+  list.innerHTML = "";
+  for (const a of arr) {
+    const row = document.createElement("div");
+    row.className = "saved-row";
+    row.innerHTML = `<div style="flex:1"><div class="name">${escapeHtml(a.name)}</div><div class="meta">${new Date(a.createdAt).toLocaleString()} · ${escapeHtml(a.question.slice(0,80))}</div></div>
+                     <button class="ghost tiny" data-act="load">Load</button>
+                     <button class="ghost tiny" data-act="rerun">Re-run</button>
+                     <button class="ghost tiny danger" data-act="del">Delete</button>`;
+    row.querySelector('[data-act="load"]').onclick = () => { document.getElementById("q").value = a.question; renderReport(a.report); switchTab("ask"); };
+    row.querySelector('[data-act="rerun"]').onclick = () => { document.getElementById("q").value = a.question; switchTab("ask"); document.getElementById("go").click(); };
+    row.querySelector('[data-act="del"]').onclick = () => { setSaved(getSaved().filter(x => x.id !== a.id)); renderSaved(); };
+    list.appendChild(row);
+  }
+}
+document.getElementById("save-analysis").onclick = () => {
+  if (!lastReport) return;
+  const name = prompt("Name this analysis:", document.getElementById("q").value.slice(0,60));
+  if (!name) return;
+  const arr = getSaved();
+  arr.unshift({ id: Date.now().toString(36), name, question: lastQuestion, report: lastReport, createdAt: new Date().toISOString() });
+  setSaved(arr);
+  renderSaved();
+  showToast("Saved", "success");
+  sfx.success();
+};
+
+// =====================================================================
+// PYODIDE
+// =====================================================================
+let pyodide = null, pyLoading = null;
+async function ensurePyodide() {
+  if (pyodide) return pyodide;
+  if (pyLoading) return pyLoading;
+  pyLoading = (async () => {
+    showToast("Loading Python runtime (~20s)…", "info");
+    await new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js";
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/" });
+    await pyodide.loadPackage(["pandas","numpy","scipy"]);
+    pyodide.globals.set("__sql_runner", (q) => JSON.stringify(runSql(q, "agent-py")));
+    await pyodide.runPythonAsync(`
+import json
+import pandas as pd
+import numpy as np
+import scipy.stats as stats
+def sql(q):
+    r = json.loads(__sql_runner(q))
+    if not r.get("ok"): raise RuntimeError(r.get("error","sql error"))
+    return pd.DataFrame(r["rows"])
+`);
+    showToast("Python ready", "success");
+    sfx.ding();
+    return pyodide;
+  })();
+  return pyLoading;
+}
+async function runPython(code) {
+  try {
+    const py = await ensurePyodide();
+    py.runPython(`import sys, io
+_stdout = io.StringIO()
+sys.stdout = _stdout`);
+    let err = null;
+    try { await py.runPythonAsync(code); }
+    catch(e) { err = String(e); }
+    const out = py.runPython(`sys.stdout = sys.__stdout__
+_stdout.getvalue()`);
+    return { ok: !err, stdout: out || "(no output)", error: err };
+  } catch(e) { return { ok:false, error: String(e.message||e) }; }
+}
+
+// =====================================================================
+// AGENT
+// =====================================================================
+const SYSTEM_BASE = `You are a senior data analyst. Answer business questions methodically:
+
+1. Form 2-4 candidate hypotheses BEFORE querying. Decide which to test first based on likely impact.
+2. Use run_sql to gather evidence. Iterate — drill down by dimensions until you've explained the variance.
+3. Use run_python for ANY statistical claim: t-tests, confidence intervals, correlations, anomaly detection, regressions, time-series. Available globals: pandas (pd), numpy (np), scipy.stats (stats), and sql(query_string) → DataFrame. Use print() to output results.
+4. When you find an effect, ask "by what dimension?" until the root cause is isolated.
+5. Call submit_report exactly once. In the report:
+   - For each hypothesis you tested, include status (confirmed/refuted/inconclusive) and one-line evidence.
+   - In summary_markdown, cite the queries that produced each number using [Q1], [Q2] for SQL or [P1] for Python. The number is the order in which you called that tool.
+   - Quote concrete numbers, with units. State assumptions you made about ambiguous terms.
+   - Provide 1-3 charts that best illustrate the finding (bar for comparisons, line for trends).
+6. For follow-up questions in the same conversation, use prior context — don't redo work.
+
+Schema:
+`;
+
+const TOOL_SCHEMAS = [
+  { name:"run_sql",
+    description:"Execute a SQLite query. Returns up to 200 rows as JSON.",
+    schema:{ type:"object", properties:{ sql:{type:"string"} }, required:["sql"] } },
+  { name:"run_python",
+    description:"Run Python with pandas (pd), numpy (np), scipy.stats (stats), and sql(query)->DataFrame helper. Use print() for output.",
+    schema:{ type:"object", properties:{ code:{type:"string"} }, required:["code"] } },
+  { name:"submit_report",
+    description:"Deliver the final answer. Call exactly once when analysis is complete.",
+    schema:{ type:"object", required:["headline","hypotheses","summary_markdown","charts"], properties:{
+      headline:{ type:"string" },
+      hypotheses:{ type:"array", items:{ type:"object", required:["statement","status","evidence"], properties:{
+        statement:{ type:"string" },
+        status:{ type:"string", enum:["confirmed","refuted","inconclusive"] },
+        evidence:{ type:"string" }
+      }}},
+      summary_markdown:{ type:"string", description:"Multi-paragraph analysis with [Q1] / [P1] inline citations." },
+      charts:{ type:"array", description:"1-3 charts illustrating the finding.",
+        items:{ type:"object", required:["type","title","labels","datasets"], properties:{
+          type:{ type:"string", enum:["bar","line"] },
+          title:{ type:"string" },
+          labels:{ type:"array", items:{type:"string"} },
+          datasets:{ type:"array", items:{ type:"object", required:["label","data"], properties:{
+            label:{ type:"string" }, data:{ type:"array", items:{type:"number"} }
+          }}}
+      }}}
+    }}}
+];
+
+const GEMINI_TOOLS = [{
+  function_declarations: TOOL_SCHEMAS.map(t => ({ name: t.name, description: t.description, parameters: t.schema }))
+}];
+const CLAUDE_TOOLS = TOOL_SCHEMAS.map(t => ({ name: t.name, description: t.description, input_schema: t.schema }));
+
+function currentProvider() { return document.getElementById("model-pick").value.split(":")[0]; }
+function currentModel()    { return document.getElementById("model-pick").value.split(":").slice(1).join(":"); }
+
+function toGeminiContents(messages) {
+  const out = [];
+  for (const m of messages) {
+    if (m.role === "user") out.push({ role:"user", parts:[{ text: m.text }] });
+    else if (m.role === "assistant") {
+      const parts = [];
+      if (m.text) parts.push({ text: m.text });
+      for (const tc of (m.toolCalls || [])) parts.push({ functionCall: { name: tc.name, args: tc.args || {} } });
+      out.push({ role:"model", parts });
+    } else if (m.role === "tool") {
+      out.push({ role:"user", parts: m.results.map(r => ({ functionResponse: { name: r.name, response: { result: r.output } } })) });
+    }
+  }
+  return out;
+}
+function toClaudeMessages(messages) {
+  const out = [];
+  for (const m of messages) {
+    if (m.role === "user") out.push({ role:"user", content: m.text });
+    else if (m.role === "assistant") {
+      const content = [];
+      if (m.text) content.push({ type:"text", text: m.text });
+      for (const tc of (m.toolCalls || [])) content.push({ type:"tool_use", id: tc.id, name: tc.name, input: tc.args || {} });
+      out.push({ role:"assistant", content });
+    } else if (m.role === "tool") {
+      out.push({ role:"user", content: m.results.map(r => ({
+        type:"tool_result", tool_use_id: r.id,
+        content: typeof r.output === "string" ? r.output : JSON.stringify(r.output).slice(0, 8000)
+      })) });
+    }
+  }
+  return out;
+}
+
+async function callGemini(messages) {
+  const key = (localStorage.getItem("gemini_key") || document.getElementById("key").value).trim();
+  if (!key) throw new Error("Enter your Google AI Studio API key first.");
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + currentModel() + ":generateContent?key=" + encodeURIComponent(key);
+  const r = await fetch(url, {
+    method:"POST",
+    headers:{"content-type":"application/json"},
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: SYSTEM_BASE + SCHEMA_TEXT }] },
+      contents: toGeminiContents(messages),
+      tools: GEMINI_TOOLS,
+      tool_config: { function_calling_config: { mode:"AUTO" } },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 4096 }
+    })
+  });
+  if (!r.ok) throw new Error("Gemini " + r.status + ": " + (await r.text()).slice(0,400));
+  const json = await r.json();
+  const parts = json.candidates?.[0]?.content?.parts || [];
+  const text = parts.filter(p => p.text).map(p => p.text).join("\n").trim();
+  const toolCalls = parts.filter(p => p.functionCall).map((p, i) => ({
+    id: "gem_" + Date.now() + "_" + i, name: p.functionCall.name, args: p.functionCall.args || {}
+  }));
+  return { text, toolCalls };
+}
+async function callClaude(messages) {
+  const key = (localStorage.getItem("claude_key") || document.getElementById("key").value).trim();
+  if (!key) throw new Error("Enter your Anthropic API key first.");
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{
+      "content-type":"application/json",
+      "x-api-key": key,
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"
+    },
+    body: JSON.stringify({
+      model: currentModel(),
+      max_tokens: 4096,
+      temperature: 0.2,
+      system: SYSTEM_BASE + SCHEMA_TEXT,
+      tools: CLAUDE_TOOLS,
+      messages: toClaudeMessages(messages)
+    })
+  });
+  if (!r.ok) throw new Error("Claude " + r.status + ": " + (await r.text()).slice(0,400));
+  const json = await r.json();
+  const content = json.content || [];
+  const text = content.filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+  const toolCalls = content.filter(b => b.type === "tool_use").map(b => ({ id: b.id, name: b.name, args: b.input || {} }));
+  return { text, toolCalls };
+}
+async function callModel(messages) {
+  return currentProvider() === "claude" ? callClaude(messages) : callGemini(messages);
+}
+
+const traceEl = document.getElementById("trace");
+let stepCounter = { Q:0, P:0 };
+let conversationContents = [];
+let lastReport = null, lastQuestion = "";
+
+function addStep(kind, label, body, citationId) {
+  const div = document.createElement("div");
+  div.className = "trace-step " + kind;
+  if (citationId) div.id = "step-" + citationId;
+  let html = `<div class="label">`;
+  if (citationId) html += `<span class="tag">${citationId}</span>`;
+  html += `${label}</div>`;
+  div.innerHTML = html;
+  if (body) {
+    const pre = document.createElement("pre");
+    pre.textContent = typeof body === "string" ? body : JSON.stringify(body,null,2);
+    div.appendChild(pre);
+  }
+  traceEl.appendChild(div);
+  div.scrollIntoView({ behavior:"smooth", block:"end" });
+  return div;
+}
+function addTraceTable(rows) {
+  if (!rows.length) return;
+  const cols = Object.keys(rows[0]);
+  const last = traceEl.lastElementChild;
+  let html = `<table class="result-table"><tr>` + cols.map(c=>`<th>${escapeHtml(c)}</th>`).join("") + "</tr>";
+  for (const r of rows.slice(0,12))
+    html += "<tr>" + cols.map(c=>`<td>${escapeHtml(r[c]??"")}</td>`).join("") + "</tr>";
+  html += "</table>";
+  if (rows.length > 12) html += `<div class="muted" style="margin-top:4px">…${rows.length-12} more rows</div>`;
+  last.insertAdjacentHTML("beforeend", html);
+}
+function addThinking() {
+  const div = document.createElement("div");
+  div.className = "trace-step";
+  div.id = "thinking-indicator";
+  div.innerHTML = `<div class="label"><span class="thinking-pulse"></span><span class="thinking-pulse"></span><span class="thinking-pulse"></span> Thinking</div>`;
+  traceEl.appendChild(div);
+  div.scrollIntoView({ behavior:"smooth", block:"end" });
+}
+function removeThinking() { document.getElementById("thinking-indicator")?.remove(); }
+
+async function runAgent(question, isFollowup = false) {
+  if (!isFollowup) {
+    traceEl.innerHTML = "";
+    document.getElementById("report").style.display = "none";
+    document.getElementById("followup-card").style.display = "none";
+    stepCounter = { Q:0, P:0 };
+    conversationContents = [];
+    lastQuestion = question;
+  } else {
+    addStep("", "Follow-up", question);
+  }
+  conversationContents.push({ role:"user", text: question });
+
+  for (let step=0; step<14; step++) {
+    addThinking();
+    let resp;
+    try { resp = await callModel(conversationContents); }
+    catch(e) { removeThinking(); addStep("err","API error",e.message); sfx.err(); return; }
+    removeThinking();
+
+    if (resp.text) addStep("", "Reasoning", resp.text);
+    if (!resp.toolCalls.length) {
+      addStep("err","Stopped without final report.", resp.text || "(no content)");
+      sfx.err(); return;
+    }
+    conversationContents.push({ role:"assistant", text: resp.text, toolCalls: resp.toolCalls });
+
+    const toolResults = [];
+    let report = null;
+
+    for (const tc of resp.toolCalls) {
+      if (tc.name === "run_sql") {
+        stepCounter.Q++;
+        const id = "Q" + stepCounter.Q;
+        const result = runSql(tc.args.sql, "agent");
+        addStep("tool-sql", "SQL", tc.args.sql, id);
+        if (result.ok) { addTraceTable(result.rows); sfx.sql(); }
+        else { addStep("err","SQL error", result.error); sfx.err(); }
+        toolResults.push({ id: tc.id, name: tc.name, output: result });
+      } else if (tc.name === "run_python") {
+        stepCounter.P++;
+        const id = "P" + stepCounter.P;
+        addStep("tool-py","Python", tc.args.code, id);
+        const result = await runPython(tc.args.code);
+        addStep(result.ok ? "tool-py" : "err", result.ok ? "Output" : "Python error", result.stdout || result.error);
+        if (result.ok) sfx.py(); else sfx.err();
+        toolResults.push({ id: tc.id, name: tc.name, output: { ok:result.ok, stdout:(result.stdout||"").slice(0,4000), error:result.error||null } });
+      } else if (tc.name === "submit_report") {
+        report = tc.args;
+        toolResults.push({ id: tc.id, name: tc.name, output: { ok:true } });
+      }
+    }
+
+    if (report) {
+      lastReport = report;
+      renderReport(report);
+      sfx.success();
+      showToast("Analysis complete", "success");
+      return;
+    }
+    conversationContents.push({ role:"tool", results: toolResults });
+  }
+  addStep("err","Hit step budget without a final report.","");
+  sfx.err();
+}
+
+// =====================================================================
+// REPORT RENDERING
+// =====================================================================
+let chartObjs = [];
+function renderReport(r) {
+  document.getElementById("report").style.display = "";
+  document.getElementById("followup-card").style.display = "";
+  document.getElementById("headline").textContent = r.headline;
+
+  const list = document.getElementById("hyp-list");
+  list.innerHTML = "";
+  for (const h of (r.hypotheses || [])) {
+    const li = document.createElement("li");
+    const icon = { confirmed:"✓", refuted:"✕", inconclusive:"?" }[h.status] || "?";
+    li.innerHTML = `<span class="hyp-status ${h.status}">${icon}</span>
+                    <div class="hyp-text"><div class="stmt">${escapeHtml(h.statement)}</div>
+                    <div class="ev">${escapeHtml(h.evidence||"")}</div></div>`;
+    list.appendChild(li);
+  }
+
+  let html = escapeHtml(r.summary_markdown || "")
+    .replace(/^### (.*)$/gm,"<h4>$1</h4>")
+    .replace(/^## (.*)$/gm,"<h4>$1</h4>")
+    .replace(/\*\*(.+?)\*\*/g,"<b>$1</b>")
+    .replace(/\*(.+?)\*/g,"<i>$1</i>")
+    .replace(/`([^`]+)`/g,"<code>$1</code>")
+    .replace(/\[([QP]\d+)\]/g, '<a class="cite" data-id="$1">$1</a>')
+    .replace(/^- (.*)$/gm,"<li>$1</li>")
+    .replace(/(<li>(?:.|\n)*?<\/li>)+/g, m => "<ul>"+m+"</ul>")
+    .replace(/\n\n/g,"</p><p>");
+  html = "<p>" + html + "</p>";
+  document.getElementById("summary").innerHTML = html;
+
+  document.querySelectorAll(".cite").forEach(el => {
+    el.onclick = () => {
+      const target = document.getElementById("step-" + el.dataset.id);
+      if (target) {
+        target.scrollIntoView({ behavior:"smooth", block:"center" });
+        target.classList.remove("highlight");
+        void target.offsetWidth;
+        target.classList.add("highlight");
+        sfx.click();
+      }
+    };
+  });
+
+  chartObjs.forEach(c => c.destroy());
+  chartObjs = [];
+  const charts = r.charts || (r.chart ? [r.chart] : []);
+  const grid = document.getElementById("charts");
+  grid.innerHTML = "";
+  grid.classList.toggle("two", charts.length === 2);
+  const palette = ["#a78bfa","#06b6d4","#4ade80","#facc15","#f87171"];
+  charts.forEach((ch) => {
+    const wrap = document.createElement("div");
+    wrap.className = "chart-wrap";
+    const cv = document.createElement("canvas");
+    wrap.appendChild(cv);
+    grid.appendChild(wrap);
+    const obj = new Chart(cv, {
+      type: ch.type,
+      data: {
+        labels: ch.labels,
+        datasets: ch.datasets.map((d,i)=>({
+          ...d,
+          backgroundColor: ch.type === "bar" ? palette[i%palette.length] : palette[i%palette.length] + "33",
+          borderColor: palette[i%palette.length],
+          borderWidth: 2, tension: 0.3, fill: ch.type==="line", pointRadius: 1
+        }))
+      },
+      options: { ...chartOpts(true), plugins: { ...chartOpts(true).plugins, title: { display:true, text: ch.title, color: "#222", font: { size: 12, weight: "600" }}}}
+    });
+    chartObjs.push(obj);
+  });
+  document.getElementById("report").scrollIntoView({ behavior:"smooth", block:"start" });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// =====================================================================
+// EXPORTS
+// =====================================================================
+document.getElementById("export-md").onclick = () => {
+  if (!lastReport) return;
+  const r = lastReport;
+  let md = `# ${r.headline}\n\n## Question\n${lastQuestion}\n\n## Hypotheses\n`;
+  for (const h of (r.hypotheses||[])) {
+    const mark = { confirmed:"✓", refuted:"✕", inconclusive:"?" }[h.status] || "?";
+    md += `- ${mark} **${h.statement}** — ${h.evidence}\n`;
+  }
+  md += `\n## Analysis\n${r.summary_markdown}\n\n## Charts\n`;
+  for (const c of (r.charts||[])) md += `- ${c.title} (${c.type})\n`;
+  download("report.md", md, "text/markdown");
+};
+document.getElementById("export-png").onclick = () => {
+  if (!chartObjs.length) return;
+  chartObjs.forEach((c, i) => {
+    const a = document.createElement("a");
+    a.href = c.toBase64Image(); a.download = `chart_${i+1}.png`; a.click();
+  });
+};
+
+// =====================================================================
+// TOAST
+// =====================================================================
+function showToast(msg, kind="success") {
+  const t = document.createElement("div");
+  t.className = "toast " + kind;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3200);
+}
+
+// =====================================================================
+// TABS
+// =====================================================================
+function switchTab(name) {
+  document.querySelectorAll("nav.tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tab-panel").forEach(p => p.hidden = p.dataset.panel !== name);
+  if (name === "saved") renderSaved();
+  if (name === "schema") profileAll();
+  sfx.click();
+}
+document.querySelectorAll("nav.tabs button").forEach(b => { b.onclick = () => switchTab(b.dataset.tab); });
+
+// =====================================================================
+// WIRING
+// =====================================================================
+const EXAMPLES = [
+  "Why did our retail margins drop in the Boston suburbs last month?",
+  "Which product category is growing fastest this year?",
+  "Find statistically significant outliers in March 2026 sales.",
+  "Compare margin distributions across regions and test for differences.",
+];
+const exDiv = document.getElementById("examples");
+EXAMPLES.forEach(ex => {
+  const b = document.createElement("button");
+  b.className = "ghost";
+  b.textContent = ex.length > 52 ? ex.slice(0,52)+"…" : ex;
+  b.title = ex;
+  b.onclick = () => { document.getElementById("q").value = ex; sfx.click(); };
+  exDiv.appendChild(b);
+});
+
+const fileInput = document.getElementById("file");
+const drop = document.getElementById("drop");
+fileInput.addEventListener("change", async e => {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  const status = document.getElementById("upload-status");
+  status.textContent = "Loading…";
+  try { for (const f of files) await loadUserFile(f); }
+  catch(err) { status.textContent = "Error: " + err.message; sfx.err(); }
+  fileInput.value = "";
+});
+["dragover","dragenter"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("drag"); }));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("drag"); }));
+drop.addEventListener("drop", async e => {
+  e.preventDefault();
+  const files = Array.from(e.dataTransfer.files);
+  if (!files.length) return;
+  for (const f of files) { try { await loadUserFile(f); } catch(err) { showToast("Error: "+err.message,"err"); } }
+});
+document.getElementById("clear-data").onclick = clearAllData;
+document.getElementById("reset-demo").onclick = async () => { await loadDemo(); showToast("Demo reset","success"); };
+
+document.getElementById("go").onclick = async () => {
+  const q = document.getElementById("q").value.trim();
+  if (!q) { sfx.err(); return; }
+  sfx.click();
+  const btn = document.getElementById("go");
+  btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Running…`;
+  try { await runAgent(q, false); }
+  finally { btn.disabled = false; btn.textContent = "Run analysis"; }
+};
+document.getElementById("followup-go").onclick = async () => {
+  const q = document.getElementById("followup").value.trim();
+  if (!q) return;
+  sfx.click();
+  document.getElementById("followup").value = "";
+  const btn = document.getElementById("followup-go");
+  btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Running…`;
+  try { await runAgent(q, true); }
+  finally { btn.disabled = false; btn.textContent = "Continue"; }
+};
+document.getElementById("new-conv").onclick = () => {
+  conversationContents = [];
+  traceEl.innerHTML = "";
+  document.getElementById("report").style.display = "none";
+  document.getElementById("followup-card").style.display = "none";
+  showToast("New conversation", "info");
+};
+
+// Model picker
+function updateKeyField() {
+  const provider = currentProvider();
+  const keyEl = document.getElementById("key");
+  const hint = document.getElementById("key-hint");
+  if (provider === "gemini") {
+    keyEl.placeholder = "AIza... (Google AI Studio key)";
+    keyEl.value = localStorage.getItem("gemini_key") || "";
+    hint.innerHTML = `Free tier · <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent)">aistudio.google.com/apikey</a>`;
+  } else {
+    keyEl.placeholder = "sk-ant-... (Anthropic API key)";
+    keyEl.value = localStorage.getItem("claude_key") || "";
+    hint.innerHTML = `Pay-per-use · <a href="https://console.anthropic.com/" target="_blank" style="color:var(--accent)">console.anthropic.com</a>`;
+  }
+}
+const modelPick = document.getElementById("model-pick");
+const savedModel = localStorage.getItem("model_pick");
+if (savedModel && [...modelPick.options].some(o => o.value === savedModel)) modelPick.value = savedModel;
+modelPick.addEventListener("change", () => {
+  localStorage.setItem("model_pick", modelPick.value);
+  updateKeyField();
+  sfx.click();
+});
+document.getElementById("key").addEventListener("input", e => {
+  const k = currentProvider() === "gemini" ? "gemini_key" : "claude_key";
+  localStorage.setItem(k, e.target.value);
+});
+updateKeyField();
+
+// Theme
+function applyTheme(t) {
+  document.body.dataset.theme = t;
+  document.getElementById("theme-toggle").textContent = t === "light" ? "☀" : "☾";
+}
+document.getElementById("theme-toggle").onclick = () => {
+  const next = document.body.dataset.theme === "light" ? "dark" : "light";
+  applyTheme(next);
+  localStorage.setItem("theme", next);
+  sfx.click();
+};
+applyTheme(localStorage.getItem("theme") || "dark");
+
+loadDemo();
+renderSaved();
+</script>
+</body>
+</html>

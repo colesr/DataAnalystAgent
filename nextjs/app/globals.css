@@ -1,0 +1,115 @@
+/* Ported from index.html — kept verbatim so the React port matches the static version */
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --bg-2: #111;
+  --bg-3: #161616;
+  --border: #1f1f1f;
+  --border-strong: #2a2a2a;
+  --text: #ededed;
+  --muted: #737373;
+  --accent: #a78bfa;
+  --accent-soft: rgba(167, 139, 250, 0.08);
+  --success: #4ade80;
+  --warn: #facc15;
+  --err: #f87171;
+}
+[data-theme="light"] {
+  --bg: #fafafa;
+  --bg-2: #ffffff;
+  --bg-3: #f4f4f5;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --text: #18181b;
+  --muted: #71717a;
+  --accent: #7c3aed;
+  --accent-soft: rgba(124, 58, 237, 0.07);
+  --success: #16a34a;
+  --warn: #d97706;
+  --err: #dc2626;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body {
+  font: 13px/1.5 -apple-system, system-ui, "SF Pro Text", "Inter", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  margin: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 1100px; margin: auto; padding: 32px 24px 80px; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 20px; margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+header h1 {
+  font-size: 14px; font-weight: 600; margin: 0; letter-spacing: -0.005em;
+  color: var(--text); display: flex; align-items: center;
+}
+header h1::before {
+  content: ""; display: inline-block; width: 7px; height: 7px;
+  background: var(--accent); border-radius: 50%; margin-right: 10px;
+}
+
+.card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.card h3 {
+  margin: 0 0 12px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+button.primary {
+  background: var(--accent);
+  color: #0a0a0a;
+  border: 0;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  margin-top: 10px;
+}
+button.primary:hover { opacity: 0.85; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.muted { color: var(--muted); font-size: 11px; }
+code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.status-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.status-row .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-row .dot.ok { background: var(--success); }
+.status-row .dot.warn { background: var(--warn); }
+.status-row .dot.err { background: var(--err); }

@@ -1,0 +1,2 @@
+# Drizzle Kit will write generated migration files into this folder.
+# Keep the directory tracked even when empty.

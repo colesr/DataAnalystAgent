@@ -7,6 +7,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.1/dist/chartjs-chart-sankey.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@3.1.0/dist/chartjs-chart-treemap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -460,6 +464,276 @@ body[data-theme="light"] .chart-wrap { background: #fff; border: 1px solid var(-
 body[data-theme="light"] .card { box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
 body[data-theme="light"] .trace-step pre { background: #fafafa; }
 body[data-theme="light"] .qh-source { background: #f4f4f5; }
+
+/* ============ TOAST POSITIONING (top-right to avoid bot fab) ============ */
+.toast {
+  top: 20px;
+  right: 20px;
+  bottom: auto;
+}
+@keyframes toastIn { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { to { opacity: 0; transform: translateX(8px); } }
+
+/* ============ TOOL FILTER CHIPS + SEARCH ============ */
+.tool-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.tool-toolbar input[type="search"] {
+  width: 220px;
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+.cat-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+.chip {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 4px 11px;
+  border-radius: 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all .12s;
+  white-space: nowrap;
+}
+.chip:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.chip.active {
+  background: var(--accent);
+  color: #0a0a0a;
+  border-color: var(--accent);
+}
+
+/* ============ DASHBOARD ============ */
+.dash-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.dash-toolbar select { flex: 1; max-width: 240px; }
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.dash-tile {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px;
+  position: relative;
+  min-height: 200px;
+}
+.dash-tile h4 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  padding-right: 70px;
+}
+.dash-tile .tile-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 4px;
+}
+.dash-tile .big-number {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  padding: 22px 0 6px;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.dash-tile .big-number-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 4px;
+}
+.dash-tile.span-2 { grid-column: span 2; }
+@media (max-width: 720px) { .dash-tile.span-2 { grid-column: span 1; } }
+.dash-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* ============ CHATBOT ============ */
+.bot-fab {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #0a0a0a;
+  border: 0;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 300;
+  box-shadow: 0 8px 24px rgba(167, 139, 250, 0.5);
+  display: grid;
+  place-items: center;
+  transition: transform .15s, box-shadow .15s;
+}
+.bot-fab:hover {
+  transform: scale(1.08);
+  box-shadow: 0 10px 28px rgba(167, 139, 250, 0.6);
+}
+.bot-fab.active { background: var(--text); color: var(--bg); }
+.bot-panel {
+  position: fixed;
+  bottom: 84px;
+  right: 22px;
+  width: 380px;
+  max-width: calc(100vw - 44px);
+  height: 540px;
+  max-height: calc(100vh - 130px);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  z-index: 300;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+  animation: botSlideIn .22s ease;
+  overflow: hidden;
+}
+@keyframes botSlideIn {
+  from { opacity: 0; transform: translateY(8px) scale(.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.bot-header {
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+.bot-header .bot-title { display: flex; align-items: center; gap: 8px; }
+.bot-header .bot-title::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--success); display: inline-block;
+}
+.bot-header .close {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 6px;
+}
+.bot-header .close:hover { color: var(--text); }
+.bot-msgs {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  background: var(--bg);
+}
+.bot-msg {
+  padding: 9px 13px;
+  border-radius: 12px;
+  max-width: 88%;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.bot-msg.user {
+  background: var(--accent);
+  color: #0a0a0a;
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+  font-weight: 500;
+}
+.bot-msg.bot {
+  background: var(--bg-2);
+  color: var(--text);
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 3px;
+}
+.bot-msg.bot code {
+  background: var(--bg-3);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.bot-msg.bot strong { color: var(--accent); }
+.bot-input-row {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.bot-input-row input {
+  flex: 1;
+  font-size: 12px;
+}
+.bot-input-row button {
+  background: var(--accent);
+  color: #0a0a0a;
+  border: 0;
+  width: 38px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 16px;
+}
+.bot-input-row button:hover { opacity: 0.85; }
+.bot-input-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+.bot-suggestions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 8px 12px 0;
+}
+.bot-suggestions button {
+  background: var(--bg-3);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 4px 9px;
+  border-radius: 12px;
+  font-size: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+.bot-suggestions button:hover { color: var(--text); border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -504,6 +778,7 @@ body[data-theme="light"] .qh-source { background: #f4f4f5; }
 <nav class="tabs">
   <button data-tab="ask" class="active">Ask</button>
   <button data-tab="tools">Tools</button>
+  <button data-tab="dashboard">Dashboard</button>
   <button data-tab="clean">Clean</button>
   <button data-tab="pivot">Pivot</button>
   <button data-tab="sql">SQL</button>
@@ -550,6 +825,21 @@ body[data-theme="light"] .qh-source { background: #f4f4f5; }
 
 <!-- ============ TOOLS ============ -->
 <section class="tab-panel" data-panel="tools" hidden>
+  <div class="tool-toolbar">
+    <input type="search" id="tool-search" placeholder="Search tools…">
+    <div class="cat-chips" id="cat-chips">
+      <button class="chip active" data-cat="all">All</button>
+      <button class="chip" data-cat="profile">Profile</button>
+      <button class="chip" data-cat="aggregate">Aggregate</button>
+      <button class="chip" data-cat="stats">Statistics</button>
+      <button class="chip" data-cat="modeling">Modeling</button>
+      <button class="chip" data-cat="analytics">Analytics</button>
+      <button class="chip" data-cat="engineering">Engineering</button>
+      <button class="chip" data-cat="quality">Quality</button>
+      <button class="chip" data-cat="viz">Visualization</button>
+    </div>
+  </div>
+
   <div class="card">
     <h3>Distribution / Histogram</h3>
     <div class="muted">Or click any column in the Schema tab.</div>
@@ -916,6 +1206,43 @@ Cost never exceeds revenue | SELECT * FROM sales WHERE cost &gt; revenue"></text
     <button class="primary" id="da-go">Run assertions</button>
     <div id="da-out" class="tool-result"></div>
   </div>
+
+  <div class="tools-divider">Visualization</div>
+
+  <div class="card">
+    <h3>Treemap</h3>
+    <div class="muted">Hierarchical area chart. Each rectangle's size is proportional to the metric.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label class="lbl">Table</label><select id="tm-table"></select></div>
+      <div><label class="lbl">Category</label><select id="tm-cat"></select></div>
+      <div><label class="lbl">Value</label><select id="tm-val"></select></div>
+      <div><label class="lbl">Aggregate</label>
+        <select id="tm-agg"><option>SUM</option><option>COUNT</option><option>AVG</option></select>
+      </div>
+    </div>
+    <button class="primary" id="tm-go">Build treemap</button>
+    <div id="tm-result" class="tool-result"></div>
+  </div>
+</section>
+
+<!-- ============ DASHBOARD ============ -->
+<section class="tab-panel" data-panel="dashboard" hidden>
+  <div class="card">
+    <h3>Dashboard
+      <span class="right">
+        <button class="ghost tiny" id="dash-add-tile">+ Add tile</button>
+      </span>
+    </h3>
+    <div class="dash-toolbar">
+      <select id="dash-pick"></select>
+      <input id="dash-name" placeholder="Dashboard name" style="flex:1">
+      <button class="ghost tiny" id="dash-new">+ New</button>
+      <button class="ghost tiny" id="dash-save">Save</button>
+      <button class="ghost tiny danger" id="dash-del">Delete</button>
+    </div>
+    <div class="muted" style="margin-top:8px">Combine SQL queries into a custom dashboard. Tiles support bar / line / pie / doughnut / big number / table / treemap. All data stays in your browser.</div>
+  </div>
+  <div id="dash-grid" class="dash-grid"></div>
 </section>
 
 <!-- ============ CLEAN ============ -->
@@ -1016,6 +1343,21 @@ last_month: the most recent fully completed calendar month"></textarea>
 
 </div>
 <div id="modal-root"></div>
+
+<!-- ============ CHATBOT HELPER ============ -->
+<button class="bot-fab" id="bot-fab" title="Help">?</button>
+<div class="bot-panel" id="bot-panel" hidden>
+  <div class="bot-header">
+    <span class="bot-title">Help · Digital Data Analyst</span>
+    <button class="close" id="bot-close">×</button>
+  </div>
+  <div class="bot-msgs" id="bot-msgs"></div>
+  <div class="bot-suggestions" id="bot-suggestions"></div>
+  <div class="bot-input-row">
+    <input type="text" id="bot-input" placeholder="Ask anything about the app…">
+    <button id="bot-send">→</button>
+  </div>
+</div>
 
 <script>
 // =====================================================================
@@ -1412,10 +1754,21 @@ function showHistogram(table, col, type) {
     });
   }
 }
+// Register chart.js plugins globally (loaded from CDN)
+if (typeof Chart !== "undefined") {
+  if (window["chartjs-plugin-annotation"]) Chart.register(window["chartjs-plugin-annotation"]);
+  if (window["chartjs-plugin-zoom"])       Chart.register(window["chartjs-plugin-zoom"]);
+}
 function chartOpts(showLegend) {
   return {
     responsive: true, maintainAspectRatio: false,
-    plugins: { legend: { display: showLegend, labels: { color: "#444" }} },
+    plugins: {
+      legend: { display: showLegend, labels: { color: "#444" } },
+      zoom: {
+        zoom:  { wheel: { enabled: true }, pinch: { enabled: true }, mode: "x" },
+        pan:   { enabled: true, mode: "x" }
+      }
+    },
     scales: {
       x: { ticks: { color: "#666", font: { size: 9 } }, grid: { color: "#eee" } },
       y: { ticks: { color: "#666", font: { size: 9 } }, grid: { color: "#eee" } }
@@ -1427,7 +1780,7 @@ function chartOpts(showLegend) {
 // TOOLS: REFRESH PICKERS
 // =====================================================================
 function refreshToolsPanel() {
-  const tableSelects = ["hist-table","corr-table","fc-table","ol-table","pop-table","gb-table","tt-table","jn-left","jn-right","ch-table","lr-table","pa-table","fn-table","wn-table","qb-table","nm-table","mp-table","sk-table","sv-table","mr-table","cs-table","dx-table","sn-table","rw-table","km-table"];
+  const tableSelects = ["hist-table","corr-table","fc-table","ol-table","pop-table","gb-table","tt-table","jn-left","jn-right","ch-table","lr-table","pa-table","fn-table","wn-table","qb-table","nm-table","mp-table","sk-table","sv-table","mr-table","cs-table","dx-table","sn-table","rw-table","km-table","tm-table"];
   for (const id of tableSelects) {
     const sel = document.getElementById(id);
     if (!sel) continue;
@@ -1440,7 +1793,14 @@ function refreshToolsPanel() {
   refreshJoinKeys(); refreshChCols(); refreshLrCols(); refreshPaCols();
   refreshFnCols(); refreshWnCols(); refreshQbCols(); refreshNmCols();
   refreshMpCols(); refreshSkCols(); refreshSvCols(); refreshMrCols(); refreshCsCols();
-  refreshDxCols(); refreshSnCols(); refreshRwCols(); refreshKmCols();
+  refreshDxCols(); refreshSnCols(); refreshRwCols(); refreshKmCols(); refreshTmCols();
+  // Re-categorize cards (in case new ones got added)
+  categorizeTools();
+}
+function refreshTmCols() {
+  const t = document.getElementById("tm-table").value;
+  fillSelect("tm-cat", colsOf(t));
+  fillSelect("tm-val", colsOf(t, ty => ty==="INTEGER" || ty==="REAL"));
 }
 function refreshDxCols() { fillSelect("dx-col", colsOf(document.getElementById("dx-table").value)); }
 function refreshSnCols() {
@@ -1459,12 +1819,13 @@ function refreshKmCols() {
   const sel = document.getElementById("km-feats");
   sel.innerHTML = numCols.map(c => `<option>${c}</option>`).join("");
 }
-["dx-table","sn-table","rw-table","km-table"].forEach(id => {
+["dx-table","sn-table","rw-table","km-table","tm-table"].forEach(id => {
   document.getElementById(id).addEventListener("change", () => {
     if (id==="dx-table") refreshDxCols();
     if (id==="sn-table") refreshSnCols();
     if (id==="rw-table") refreshRwCols();
     if (id==="km-table") refreshKmCols();
+    if (id==="tm-table") refreshTmCols();
   });
 });
 function refreshFnCols() {
@@ -1718,17 +2079,30 @@ document.getElementById("fc-go").onclick = () => {
   const actual = ys.concat(new Array(n).fill(null));
   const forecast = new Array(n0-1).fill(null).concat([ys[ys.length-1]], projected.map(p => p.v));
   out.innerHTML = `<div class="muted">slope=${fmt(slope)} · intercept=${fmt(intercept)} · ${n0} historic, ${n} projected</div>
-                   <div class="chart-wrap" style="margin-top:8px"><canvas id="fc-canvas" height="160"></canvas></div>`;
+                   <div class="chart-wrap" style="margin-top:8px"><canvas id="fc-canvas" height="180"></canvas></div>`;
+  const baseOpts = chartOpts(true);
+  baseOpts.plugins.annotation = {
+    annotations: {
+      cutoff: {
+        type: "line",
+        xMin: lastDate, xMax: lastDate,
+        borderColor: "#f87171",
+        borderWidth: 1.5,
+        borderDash: [3, 3],
+        label: { display: true, content: "forecast →", position: "start", color: "#f87171", font: { size: 9 }, backgroundColor: "rgba(0,0,0,0)" }
+      }
+    }
+  };
   new Chart(document.getElementById("fc-canvas"), {
     type: "line",
     data: {
       labels,
       datasets: [
-        { label: "Actual", data: actual, borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.1)", tension: 0.2, pointRadius: 1 },
+        { label: "Actual",   data: actual,   borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.10)", tension: 0.2, pointRadius: 1 },
         { label: "Forecast", data: forecast, borderColor: "#4ade80", borderDash: [4,4], backgroundColor: "rgba(74,222,128,0.05)", tension: 0.2, pointRadius: 1 }
       ]
     },
-    options: chartOpts(true)
+    options: baseOpts
   });
   sfx.success();
 };
@@ -2813,6 +3187,71 @@ document.getElementById("da-go").onclick = () => {
 };
 
 // =====================================================================
+// TOOLS: TREEMAP
+// =====================================================================
+let treemapChart = null;
+document.getElementById("tm-go").onclick = () => {
+  const t = document.getElementById("tm-table").value;
+  const cat = document.getElementById("tm-cat").value;
+  const val = document.getElementById("tm-val").value;
+  const agg = document.getElementById("tm-agg").value;
+  if (!t || !cat) return;
+  const aggExpr = agg === "COUNT" ? "COUNT(*)" : `${agg}("${val}")`;
+  const r = runSql(`SELECT "${cat}" name, ${aggExpr} value FROM ${t} GROUP BY "${cat}" ORDER BY value DESC LIMIT 50`, "treemap");
+  const out = document.getElementById("tm-result");
+  if (!r.ok || !r.rows.length) { out.innerHTML = `<div class="muted">${r.error || "No data"}</div>`; return; }
+  const data = r.rows.map(row => ({ name: String(row.name), value: Number(row.value) })).filter(d => d.value > 0);
+  out.innerHTML = `<div class="chart-wrap"><canvas id="tm-canvas" height="320"></canvas></div>`;
+  if (treemapChart) treemapChart.destroy();
+  try {
+    treemapChart = new Chart(document.getElementById("tm-canvas"), {
+      type: "treemap",
+      data: {
+        datasets: [{
+          tree: data,
+          key: "value",
+          labels: {
+            display: true,
+            color: "#fff",
+            font: { size: 11, weight: "600" },
+            formatter: (ctx) => {
+              const d = ctx.raw?._data;
+              if (!d) return "";
+              return [d.name, fmt(d.value)];
+            }
+          },
+          backgroundColor: (ctx) => {
+            if (!ctx.raw) return "#a78bfa";
+            const v = ctx.raw.v;
+            const max = Math.max(...data.map(d => d.value));
+            const intensity = 0.4 + 0.55 * (v / max);
+            return `rgba(124, 58, 237, ${intensity})`;
+          },
+          borderColor: "#0a0a0a",
+          borderWidth: 1,
+          spacing: 1
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => items[0]?.raw?._data?.name ?? "",
+              label: (item) => "value: " + fmt(item.raw?._data?.value ?? 0)
+            }
+          }
+        }
+      }
+    });
+    sfx.success();
+  } catch (e) {
+    out.innerHTML = `<div class="muted">Treemap plugin failed: ${e.message}</div>`;
+  }
+};
+
+// =====================================================================
 // EXPLAIN QUERY PLAN
 // =====================================================================
 document.getElementById("sql-explain").onclick = () => {
@@ -3783,6 +4222,430 @@ document.getElementById("theme-toggle").onclick = () => {
   sfx.click();
 };
 applyTheme(localStorage.getItem("theme") || "dark");
+
+// =====================================================================
+// TOOL CATEGORIZATION + FILTER + SEARCH
+// =====================================================================
+const TOOL_CATEGORIES = {
+  "Distribution / Histogram": "profile",
+  "Correlation Matrix":        "stats",
+  "Forecast":                  "modeling",
+  "Outlier Detection":         "quality",
+  "Period-over-Period":        "analytics",
+  "Group-by Builder":          "aggregate",
+  "Two-Sample T-Test":         "stats",
+  "Join Tables":               "engineering",
+  "Cohort Retention":          "analytics",
+  "Linear Regression":         "modeling",
+  "Pareto":                    "profile",
+  "A/B Test Sample Size":      "stats",
+  "Funnel Analysis":           "analytics",
+  "Window Functions":          "aggregate",
+  "Quantile Bucketing":        "engineering",
+  "Normalize Column":          "engineering",
+  "Geographic Map":            "viz",
+  "Sankey Flow Diagram":       "viz",
+  "Survival Curve":            "modeling",
+  "Multi-variable Regression": "modeling",
+  "Chi-Squared Test":          "stats",
+  "Data Dictionary":           "profile",
+  "Date Dimensions":           "engineering",
+  "Sessionization":            "engineering",
+  "Rolling Window":            "engineering",
+  "K-means Clustering":        "modeling",
+  "Data Assertions":           "quality",
+  "Treemap":                   "viz"
+};
+function categorizeTools() {
+  const cards = document.querySelectorAll('[data-panel="tools"] > .card');
+  for (const card of cards) {
+    const h3 = card.querySelector("h3");
+    if (!h3) continue;
+    const title = h3.firstChild?.textContent?.trim() || h3.textContent.trim().split("\n")[0].trim();
+    for (const [name, cat] of Object.entries(TOOL_CATEGORIES)) {
+      if (title.startsWith(name)) {
+        card.dataset.cat = cat;
+        break;
+      }
+    }
+  }
+}
+let activeCat = "all";
+let activeSearch = "";
+function applyToolFilter() {
+  const cards = document.querySelectorAll('[data-panel="tools"] > .card');
+  const dividers = document.querySelectorAll('[data-panel="tools"] > .tools-divider');
+  // Hide all dividers when filtering or searching
+  dividers.forEach(d => { d.style.display = (activeCat === "all" && !activeSearch) ? "" : "none"; });
+  for (const card of cards) {
+    const matchesCat = activeCat === "all" || card.dataset.cat === activeCat;
+    const matchesSearch = !activeSearch || card.textContent.toLowerCase().includes(activeSearch);
+    card.style.display = (matchesCat && matchesSearch) ? "" : "none";
+  }
+}
+document.querySelectorAll("#cat-chips .chip").forEach(b => {
+  b.onclick = () => {
+    activeCat = b.dataset.cat;
+    document.querySelectorAll("#cat-chips .chip").forEach(x => x.classList.toggle("active", x === b));
+    applyToolFilter();
+    sfx.click();
+  };
+});
+document.getElementById("tool-search").addEventListener("input", e => {
+  activeSearch = e.target.value.toLowerCase().trim();
+  applyToolFilter();
+});
+
+// =====================================================================
+// DASHBOARD
+// =====================================================================
+let currentDashboard = null;
+let dashChartInstances = [];
+
+function getDashboards() {
+  try { return JSON.parse(localStorage.getItem("dashboards") || "[]"); } catch { return []; }
+}
+function setDashboards(arr) { localStorage.setItem("dashboards", JSON.stringify(arr)); }
+
+function refreshDashboardList() {
+  const sel = document.getElementById("dash-pick");
+  const arr = getDashboards();
+  sel.innerHTML = `<option value="">— select dashboard —</option>` +
+    arr.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("");
+  if (currentDashboard) sel.value = currentDashboard.id;
+}
+function newDashboard() {
+  currentDashboard = { id: Date.now().toString(36), name: "Untitled dashboard", tiles: [] };
+  document.getElementById("dash-name").value = currentDashboard.name;
+  refreshDashboardList();
+  renderDashboard();
+}
+function loadDashboard(id) {
+  if (!id) { currentDashboard = null; document.getElementById("dash-name").value = ""; renderDashboard(); return; }
+  const d = getDashboards().find(x => x.id === id);
+  if (!d) return;
+  currentDashboard = JSON.parse(JSON.stringify(d));
+  document.getElementById("dash-name").value = d.name;
+  renderDashboard();
+}
+function saveDashboard() {
+  if (!currentDashboard) { showToast("Click + New first", "err"); return; }
+  currentDashboard.name = document.getElementById("dash-name").value.trim() || "Untitled";
+  const arr = getDashboards();
+  const idx = arr.findIndex(d => d.id === currentDashboard.id);
+  if (idx >= 0) arr[idx] = currentDashboard; else arr.push(currentDashboard);
+  setDashboards(arr);
+  refreshDashboardList();
+  showToast("Dashboard saved", "success");
+  sfx.success();
+}
+function deleteDashboard() {
+  if (!currentDashboard) return;
+  if (!confirm("Delete dashboard \"" + currentDashboard.name + "\"?")) return;
+  setDashboards(getDashboards().filter(d => d.id !== currentDashboard.id));
+  currentDashboard = null;
+  document.getElementById("dash-name").value = "";
+  refreshDashboardList();
+  renderDashboard();
+}
+function renderDashboard() {
+  dashChartInstances.forEach(c => { try { c.destroy(); } catch {} });
+  dashChartInstances = [];
+  const grid = document.getElementById("dash-grid");
+  grid.innerHTML = "";
+  if (!currentDashboard) {
+    grid.innerHTML = `<div class="dash-empty">No dashboard loaded. Click <b>+ New</b> to start, or pick one from the dropdown.</div>`;
+    return;
+  }
+  if (!currentDashboard.tiles.length) {
+    grid.innerHTML = `<div class="dash-empty">Empty dashboard. Click <b>+ Add tile</b> to add your first tile.</div>`;
+    return;
+  }
+  for (const tile of currentDashboard.tiles) grid.appendChild(renderTile(tile));
+}
+function renderTile(tile) {
+  const div = document.createElement("div");
+  div.className = "dash-tile" + (tile.span === 2 ? " span-2" : "");
+  div.innerHTML = `
+    <h4>${escapeHtml(tile.title || "Untitled")}</h4>
+    <div class="tile-actions">
+      <button class="ghost tiny" data-act="edit">edit</button>
+      <button class="ghost tiny danger" data-act="del">×</button>
+    </div>
+    <div class="tile-body"></div>
+  `;
+  div.querySelector('[data-act="del"]').onclick = () => {
+    currentDashboard.tiles = currentDashboard.tiles.filter(t => t.id !== tile.id);
+    renderDashboard();
+  };
+  div.querySelector('[data-act="edit"]').onclick = () => editTile(tile);
+
+  const body = div.querySelector(".tile-body");
+  if (!tile.sql || !tile.sql.trim()) {
+    body.innerHTML = `<div class="muted">No query yet — click edit.</div>`;
+    return div;
+  }
+  const r = runSql(tile.sql, "dashboard");
+  if (!r.ok) { body.innerHTML = `<div class="muted" style="color:var(--err)">${escapeHtml(r.error)}</div>`; return div; }
+  if (!r.rows.length) { body.innerHTML = `<div class="muted">No rows</div>`; return div; }
+
+  const cols = Object.keys(r.rows[0]);
+
+  if (tile.chartType === "number") {
+    const v = Number(r.rows[0][cols[0]]);
+    body.innerHTML = `<div class="big-number">${Number.isFinite(v) ? fmt(v) : "—"}</div>` +
+                     (tile.subtitle ? `<div class="big-number-label">${escapeHtml(tile.subtitle)}</div>` : "");
+  } else if (tile.chartType === "table") {
+    renderTable(r.rows, body, 8);
+  } else {
+    const labels = r.rows.map(row => String(row[cols[0]]).slice(0, 24));
+    const data = r.rows.map(row => Number(row[cols[1]]));
+    const wrap = document.createElement("div");
+    wrap.className = "chart-wrap";
+    wrap.style.height = "200px";
+    const cv = document.createElement("canvas");
+    wrap.appendChild(cv);
+    body.appendChild(wrap);
+    const palette = ["#a78bfa","#06b6d4","#4ade80","#facc15","#f87171","#ec4899","#3b82f6","#84cc16"];
+    const isPie = tile.chartType === "pie" || tile.chartType === "doughnut";
+    try {
+      const obj = new Chart(cv, {
+        type: tile.chartType,
+        data: {
+          labels,
+          datasets: [{
+            label: cols[1] || "",
+            data,
+            backgroundColor: isPie ? labels.map((_, i) => palette[i % palette.length]) : "#a78bfa",
+            borderColor: "#a78bfa",
+            borderWidth: 2,
+            tension: 0.3,
+            fill: tile.chartType === "line"
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: isPie, labels: { color: "#444", font: { size: 10 }} } },
+          scales: isPie ? {} : {
+            x: { ticks: { color: "#666", font: { size: 9 }}, grid: { color: "#eee" }},
+            y: { ticks: { color: "#666", font: { size: 9 }}, grid: { color: "#eee" }}
+          }
+        }
+      });
+      dashChartInstances.push(obj);
+    } catch (e) {
+      body.innerHTML = `<div class="muted">${e.message}</div>`;
+    }
+  }
+  return div;
+}
+function editTile(existing) {
+  const isNew = !existing;
+  const tile = existing || { id: Date.now().toString(36), title: "", sql: "", chartType: "bar", subtitle: "", span: 1 };
+  openModal(`
+    <h3>${isNew ? "Add" : "Edit"} Tile <button class="close">×</button></h3>
+    <label class="lbl">Title</label>
+    <input id="tile-title" value="${escapeHtml(tile.title)}">
+    <label class="lbl" style="margin-top:8px">SQL query (first column = labels, second = values; for big number, first cell is the value)</label>
+    <textarea id="tile-sql" class="code" style="min-height:90px">${escapeHtml(tile.sql)}</textarea>
+    <div class="row" style="margin-top:8px">
+      <div>
+        <label class="lbl">Chart type</label>
+        <select id="tile-type">
+          <option value="bar">Bar</option>
+          <option value="line">Line</option>
+          <option value="pie">Pie</option>
+          <option value="doughnut">Doughnut</option>
+          <option value="number">Big number</option>
+          <option value="table">Table</option>
+        </select>
+      </div>
+      <div>
+        <label class="lbl">Width</label>
+        <select id="tile-span">
+          <option value="1">Normal</option>
+          <option value="2">Wide (2 cols)</option>
+        </select>
+      </div>
+    </div>
+    <label class="lbl" style="margin-top:8px">Subtitle (only used for big number tiles)</label>
+    <input id="tile-subtitle" value="${escapeHtml(tile.subtitle || "")}">
+    <button class="primary" id="tile-save" style="margin-top:14px">Save tile</button>
+  `);
+  document.getElementById("tile-type").value = tile.chartType;
+  document.getElementById("tile-span").value = String(tile.span || 1);
+  document.getElementById("tile-save").onclick = () => {
+    tile.title = document.getElementById("tile-title").value.trim() || "Untitled";
+    tile.sql = document.getElementById("tile-sql").value;
+    tile.chartType = document.getElementById("tile-type").value;
+    tile.subtitle = document.getElementById("tile-subtitle").value;
+    tile.span = parseInt(document.getElementById("tile-span").value) || 1;
+    if (isNew) {
+      if (!currentDashboard) newDashboard();
+      currentDashboard.tiles.push(tile);
+    }
+    closeModal();
+    renderDashboard();
+    sfx.success();
+  };
+}
+
+document.getElementById("dash-new").onclick = () => { newDashboard(); sfx.click(); };
+document.getElementById("dash-save").onclick = saveDashboard;
+document.getElementById("dash-del").onclick = deleteDashboard;
+document.getElementById("dash-add-tile").onclick = () => editTile(null);
+document.getElementById("dash-pick").addEventListener("change", e => loadDashboard(e.target.value));
+refreshDashboardList();
+renderDashboard();
+
+// =====================================================================
+// CHATBOT HELPER
+// =====================================================================
+const BOT_SYSTEM = `You are an in-app helper for Digital Data Analyst, a single-page browser tool that lets analysts upload data and run analyses with AI + one-click tools. You answer questions about how to use the app concisely and concretely.
+
+The app has these tabs:
+- **Ask** — type a business question, the AI agent forms hypotheses, runs SQL + Python tool calls, and produces a hypothesis-driven report with citations and multi-chart visualizations. Supports follow-ups.
+- **Tools** — 28 one-click tools organized by category (Profile, Aggregate, Statistics, Modeling, Analytics, Engineering, Quality, Visualization). Use the search box and category chips to find one.
+- **Dashboard** — build a custom dashboard by adding tiles. Each tile is a SQL query rendered as bar/line/pie/doughnut/big-number/table. Save and reload dashboards.
+- **Clean** — per-column rename, retype, fill nulls, trim, lower/upper, drop, add calculated columns, dedupe, parse dates.
+- **Pivot** — drag-free pivot builder with optional heatmap cell coloring.
+- **SQL** — manual SQL editor with EXPLAIN plan, CSV export, and persistent query history.
+- **Glossary** — define metrics like \`active_user: customer with at least one purchase in 30 days\`. These are injected into the agent's system prompt so it uses your terminology.
+- **Saved** — saved analyses; load to view, re-run to apply to current data.
+- **Schema** — auto-profile of every column with quality flags. Click any column for a histogram modal.
+
+Tools by category:
+- **Profile**: Distribution/Histogram, Correlation Matrix, Pareto/80-20, Data Dictionary
+- **Aggregate**: Group-by Builder, Window Functions
+- **Statistics**: Two-Sample T-Test (Welch), Chi-Squared Test, A/B Test Sample Size
+- **Modeling**: Linear Regression, Multi-variable Regression, Forecast (linear trend), K-means Clustering, Survival Curve (Kaplan-Meier)
+- **Analytics**: Cohort Retention, Period-over-Period, Funnel Analysis
+- **Engineering**: Join Tables (visual joiner that persists), Date Dimensions (year/quarter/month/dow exploder), Sessionization (gap-based session_id), Rolling Window (N-period moving avg/sum/min/max), Quantile Bucketing (NTILE), Normalize Column (z-score / min-max)
+- **Quality**: Outlier Detection (IQR), Data Assertions (SQL expectations that should return 0 rows)
+- **Visualization**: Geographic Map (Leaflet), Sankey Flow Diagram, Treemap
+
+Other features:
+- Model picker at top (Gemini Flash free, or Claude Sonnet/Opus/Haiku)
+- Light/dark theme toggle in header
+- Sound toggle in header
+- Drag-drop CSV/Excel upload, multi-file, multi-sheet
+- Stakeholder Summarizer button on reports → produces Slack/Email/Exec brief versions
+- Markdown / PNG / CSV exports
+- All data lives in browser memory (sql.js) — refresh resets it
+- BYOK API keys stored in localStorage only
+
+When answering:
+- Be concise and direct. Refer to exact tab and tool names.
+- If the user asks how to do an analysis, suggest the best built-in tool first, then the AI agent as a fallback.
+- Don't make up features that don't exist.
+- For "I want to..." questions, give a short numbered procedure.
+- Use markdown formatting: **bold**, \`code\`, lists.`;
+
+let botHistory = [];
+
+function botAddMsg(role, text) {
+  const msgs = document.getElementById("bot-msgs");
+  const div = document.createElement("div");
+  div.className = "bot-msg " + role;
+  if (role === "bot") {
+    // Light markdown rendering
+    let html = escapeHtml(text)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\n/g, "<br>");
+    div.innerHTML = html;
+  } else {
+    div.textContent = text;
+  }
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+function botShowSuggestions(items) {
+  const wrap = document.getElementById("bot-suggestions");
+  wrap.innerHTML = "";
+  for (const s of items) {
+    const b = document.createElement("button");
+    b.textContent = s;
+    b.onclick = () => {
+      document.getElementById("bot-input").value = s;
+      sendBotMsg();
+    };
+    wrap.appendChild(b);
+  }
+}
+function botInit() {
+  if (!botHistory.length) {
+    botAddMsg("bot",
+      "Hi! I can help you find tools and answer questions about the app.\n\n" +
+      "Try asking things like:\n" +
+      "• *How do I find outliers?*\n" +
+      "• *What's the best way to compare two groups?*\n" +
+      "• *How do I build a dashboard?*\n" +
+      "• *How does the AI agent work?*"
+    );
+    botShowSuggestions([
+      "How do I upload data?",
+      "Find outliers in a column",
+      "Compare two groups",
+      "What's a t-test?"
+    ]);
+  }
+}
+async function sendBotMsg() {
+  const input = document.getElementById("bot-input");
+  const sendBtn = document.getElementById("bot-send");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  document.getElementById("bot-suggestions").innerHTML = "";
+  botAddMsg("user", text);
+  botHistory.push({ role: "user", content: text });
+  sendBtn.disabled = true;
+
+  const thinking = document.createElement("div");
+  thinking.className = "bot-msg bot";
+  thinking.innerHTML = `<span class="thinking-pulse"></span><span class="thinking-pulse"></span><span class="thinking-pulse"></span>`;
+  document.getElementById("bot-msgs").appendChild(thinking);
+  thinking.scrollIntoView({ behavior: "smooth", block: "end" });
+
+  try {
+    const convo = botHistory.map(m =>
+      `${m.role === "user" ? "USER" : "ASSISTANT"}: ${m.content}`
+    ).join("\n\n");
+    const fullPrompt = BOT_SYSTEM + "\n\n" + convo + "\n\nASSISTANT:";
+    const reply = await callModelText(fullPrompt);
+    thinking.remove();
+    botAddMsg("bot", reply);
+    botHistory.push({ role: "assistant", content: reply });
+  } catch(e) {
+    thinking.remove();
+    botAddMsg("bot", "Error: " + e.message + "\n\nMake sure you have an API key set in the Model card at the top.");
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+document.getElementById("bot-fab").onclick = () => {
+  const panel = document.getElementById("bot-panel");
+  const fab = document.getElementById("bot-fab");
+  panel.hidden = !panel.hidden;
+  fab.classList.toggle("active", !panel.hidden);
+  if (!panel.hidden) {
+    botInit();
+    setTimeout(() => document.getElementById("bot-input").focus(), 50);
+  }
+  sfx.click();
+};
+document.getElementById("bot-close").onclick = () => {
+  document.getElementById("bot-panel").hidden = true;
+  document.getElementById("bot-fab").classList.remove("active");
+};
+document.getElementById("bot-send").onclick = sendBotMsg;
+document.getElementById("bot-input").addEventListener("keypress", e => {
+  if (e.key === "Enter") sendBotMsg();
+});
 
 loadDemo();
 renderSaved();

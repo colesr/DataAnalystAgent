@@ -8,7 +8,7 @@
 import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { datasets } from "../schema";
+import { datasets, workspaceMemory } from "../schema";
 import type { ChartSpec, Tool } from "./types";
 
 /** Hard cap on rows returned to the agent (keeps token usage bounded). */
@@ -87,6 +87,31 @@ export const tools: Tool[] = [
         rowCount: rowsAll.length,
         truncated,
       };
+    },
+  },
+
+  {
+    name: "save_note",
+    description:
+      "Persist a short note (max ~500 chars) about something durable you learned about the user's data — schema quirks, unit conventions, data quality caveats, etc. The note is automatically injected into the system prompt on every future run for this workspace. Use sparingly: only for facts that will help next time.",
+    input_schema: {
+      type: "object",
+      properties: {
+        note: {
+          type: "string",
+          description: "The note content. Aim for one or two short sentences.",
+        },
+      },
+      required: ["note"],
+    },
+    execute: async (input: { note: string }, ctx) => {
+      const note = (input?.note ?? "").trim().slice(0, 500);
+      if (!note) throw new Error("Empty note");
+      await db.insert(workspaceMemory).values({
+        workspaceId: ctx.workspaceId,
+        note,
+      });
+      return { ok: true, saved: note };
     },
   },
 

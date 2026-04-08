@@ -262,6 +262,21 @@ export const dashboardTiles = pgTable(
   (t) => ({ dashboardIdx: index("dashboard_tiles_dashboard_idx").on(t.dashboardId) })
 );
 
+// Workspace memory (Phase 12) — durable notes the agent saves about the
+// data so future runs have continuity. One row per note, ordered by recency.
+export const workspaceMemory = pgTable(
+  "workspace_memory",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    note: text("note").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => ({ workspaceIdx: index("workspace_memory_workspace_idx").on(t.workspaceId) })
+);
+
 // Agent runs (Phase 5) — token usage + cost telemetry per Ask invocation
 export const agentRuns = pgTable(
   "agent_runs",

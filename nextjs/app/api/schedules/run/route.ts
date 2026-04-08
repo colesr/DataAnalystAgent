@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq, desc, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { schedules, analyses, workspaces, glossaryEntries } from "@/lib/schema";
+import { schedules, analyses, workspaces, glossaryEntries, workspaceMemory } from "@/lib/schema";
 import { runAndCollect } from "@/lib/agent";
 import { isScheduleInterval, nextRunFrom } from "@/lib/schedule-interval";
 
@@ -51,14 +51,34 @@ export async function POST(req: Request) {
       continue;
     }
 
-    // Load glossary for this workspace.
-    const gloss = await db
-      .select({ name: glossaryEntries.name, definition: glossaryEntries.definition })
-      .from(glossaryEntries)
-      .where(eq(glossaryEntries.workspaceId, workspace.id));
-    const extraSystem = gloss.length
-      ? gloss.map((g) => `- **${g.name}**: ${g.definition}`).join("\n")
-      : undefined;
+    // Load glossary + memory for this workspace.
+    const [gloss, memo] = await Promise.all([
+      db
+        .select({ name: glossaryEntries.name, definition: glossaryEntries.definition })
+        .from(glossaryEntries)
+        .where(eq(glossaryEntries.workspaceId, workspace.id)),
+      db
+        .select({ note: workspaceMemory.note })
+        .from(workspaceMemory)
+        .where(eq(workspaceMemory.workspaceId, workspace.id))
+        .orderBy(desc(workspaceMemory.createdAt))
+        .limit(5),
+    ]);
+    const parts: string[] = [];
+    if (memo.length) {
+      parts.push(
+        `## Notes from previous runs in this workspace\n${memo
+          .reverse()
+          .map((m) => `- ${m.note}`)
+          .join("\n")}`
+      );
+    }
+    if (gloss.length) {
+      parts.push(
+        `## Metric glossary\n${gloss.map((g) => `- **${g.name}**: ${g.definition}`).join("\n")}`
+      );
+    }
+    const extraSystem = parts.length ? parts.join("\n\n") : undefined;
 
     const prevReport = (analysis.report ?? {}) as { model?: string };
     const model = prevReport.model || DEFAULT_MODEL;

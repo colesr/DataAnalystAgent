@@ -29,6 +29,13 @@
       "when": 1775653285219,
       "tag": "0003_phase9_workspace_membership",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1775654793278,
+      "tag": "0004_phase12_workspace_memory",
+      "breakpoints": true
     }
   ]
 }

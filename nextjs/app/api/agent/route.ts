@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { runAgent } from "@/lib/agent";
 import { db } from "@/lib/db";
-import { agentRuns, glossaryEntries } from "@/lib/schema";
+import { agentRuns, glossaryEntries, workspaceMemory } from "@/lib/schema";
 import { getOrCreateWorkspace } from "@/lib/workspace";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import type { ConvTurn } from "@/lib/agent/types";
@@ -18,6 +18,25 @@ async function loadGlossary(workspaceId: string): Promise<string> {
     .where(eq(glossaryEntries.workspaceId, workspaceId));
   if (rows.length === 0) return "";
   return rows.map((r) => `- **${r.name}**: ${r.definition}`).join("\n");
+}
+
+/** Load the most recent ~5 memory notes for this workspace, oldest first. */
+async function loadMemory(workspaceId: string): Promise<string> {
+  const rows = await db
+    .select({ note: workspaceMemory.note })
+    .from(workspaceMemory)
+    .where(eq(workspaceMemory.workspaceId, workspaceId))
+    .orderBy(desc(workspaceMemory.createdAt))
+    .limit(5);
+  if (rows.length === 0) return "";
+  return rows.reverse().map((r) => `- ${r.note}`).join("\n");
+}
+
+function buildExtraSystem(glossary: string, memory: string): string {
+  const parts: string[] = [];
+  if (memory) parts.push(`## Notes from previous runs in this workspace\n${memory}`);
+  if (glossary) parts.push(`## Metric glossary\n${glossary}`);
+  return parts.join("\n\n");
 }
 
 /**
@@ -58,7 +77,11 @@ export async function POST(req: Request) {
   if (!model) return new Response("Missing model", { status: 400 });
 
   const ws = await getOrCreateWorkspace();
-  const extraSystem = await loadGlossary(ws.id);
+  const [glossary, memory] = await Promise.all([
+    loadGlossary(ws.id),
+    loadMemory(ws.id),
+  ]);
+  const extraSystem = buildExtraSystem(glossary, memory);
   const encoder = new TextEncoder();
   const startedAt = Date.now();
 

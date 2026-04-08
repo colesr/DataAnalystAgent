@@ -418,6 +418,39 @@ nav.tabs button.active {
 /* Tools section internal headings */
 .tool-section { margin-bottom: 8px; }
 .tool-result { margin-top: 12px; }
+
+/* Data browser */
+.db-layout { display: grid; grid-template-columns: 220px 1fr; gap: 12px; }
+@media (max-width: 760px) { .db-layout { grid-template-columns: 1fr; } }
+.db-tables { display: flex; flex-direction: column; gap: 4px; max-height: 540px; overflow-y: auto; }
+.db-tbl-item {
+  text-align: left; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 8px 10px; cursor: pointer; color: var(--text);
+  font: inherit; transition: background .12s, border-color .12s;
+}
+.db-tbl-item:hover { border-color: var(--accent); }
+.db-tbl-item.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.db-tbl-item.active .db-tbl-meta { color: rgba(255,255,255,0.85); }
+.db-tbl-name { font-weight: 600; font-size: 12px; }
+.db-tbl-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.db-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.db-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.db-toolbar input[type="search"] { flex: 1; min-width: 140px; }
+.db-info { font-size: 11px; color: var(--muted); }
+.db-pager { display: flex; gap: 4px; margin-left: auto; }
+.db-scroll { max-height: 540px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; }
+.db-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.db-table thead th {
+  position: sticky; top: 0; background: var(--bg);
+  border-bottom: 1px solid var(--border); padding: 6px 8px;
+  text-align: left; cursor: pointer; user-select: none; white-space: nowrap;
+}
+.db-table thead th:hover { color: var(--accent); }
+.db-table tbody td {
+  padding: 4px 8px; border-bottom: 1px solid var(--border);
+  white-space: nowrap; max-width: 240px; overflow: hidden; text-overflow: ellipsis;
+}
+.db-table tbody tr:hover td { background: var(--bg); }
 .tools-divider {
   font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--muted); font-weight: 700;
@@ -777,6 +810,7 @@ body[data-theme="light"] .qh-source { background: #f4f4f5; }
 
 <nav class="tabs">
   <button data-tab="ask" class="active">Ask</button>
+  <button data-tab="data">Data</button>
   <button data-tab="tools">Tools</button>
   <button data-tab="dashboard">Dashboard</button>
   <button data-tab="clean">Clean</button>
@@ -820,6 +854,29 @@ body[data-theme="light"] .qh-source { background: #f4f4f5; }
     <h3>Follow-up</h3>
     <textarea id="followup" placeholder="Ask a follow-up that builds on the analysis above…"></textarea>
     <button class="primary" id="followup-go">Continue</button>
+  </div>
+</section>
+
+<!-- ============ DATA BROWSER ============ -->
+<section class="tab-panel" data-panel="data" hidden>
+  <div class="card">
+    <h3>Datasets <span class="badge" id="db-count"></span></h3>
+    <div class="muted" style="margin-bottom:8px">Pick a table to browse its rows. Click column headers to sort.</div>
+    <div class="db-layout">
+      <div class="db-tables" id="db-tables"></div>
+      <div class="db-main">
+        <div class="db-toolbar">
+          <input type="search" id="db-search" placeholder="Filter rows…" disabled>
+          <span class="db-info" id="db-info"></span>
+          <span class="db-pager">
+            <button class="ghost" id="db-prev" disabled>‹ Prev</button>
+            <button class="ghost" id="db-next" disabled>Next ›</button>
+            <button class="ghost" id="db-export" disabled title="Download current table as CSV">Export CSV</button>
+          </span>
+        </div>
+        <div class="db-grid" id="db-grid"><div class="muted">Select a dataset on the left.</div></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -1617,6 +1674,154 @@ function fmt(n) {
   if (typeof n !== "number") return String(n).slice(0,18);
   if (Math.abs(n) >= 1000) return n.toLocaleString(undefined, {maximumFractionDigits:0});
   return Number(n.toFixed(2)).toString();
+}
+
+// =====================================================================
+// DATA BROWSER
+// =====================================================================
+const dbState = { table: null, page: 0, pageSize: 50, sortCol: null, sortDir: "asc", filter: "" };
+
+function renderDataBrowser() {
+  const list = document.getElementById("db-tables");
+  document.getElementById("db-count").textContent =
+    `${currentTables.length} table${currentTables.length===1?"":"s"}`;
+  if (!db || !currentTables.length) {
+    list.innerHTML = `<div class="muted">No datasets loaded. Drop a CSV/Excel file at the top.</div>`;
+    document.getElementById("db-grid").innerHTML = `<div class="muted">Select a dataset on the left.</div>`;
+    return;
+  }
+  // Auto-pick first table if none selected or selection is gone
+  if (!dbState.table || !currentTables.includes(dbState.table)) {
+    dbState.table = currentTables[0];
+    dbState.page = 0;
+    dbState.sortCol = null;
+    dbState.filter = "";
+  }
+  list.innerHTML = "";
+  for (const t of currentTables) {
+    let rows = 0, cols = 0;
+    try {
+      rows = db.exec(`SELECT COUNT(*) FROM "${t}"`)[0].values[0][0];
+      cols = db.exec(`PRAGMA table_info("${t}")`)[0].values.length;
+    } catch(e) {}
+    const item = document.createElement("button");
+    item.className = "db-tbl-item" + (t === dbState.table ? " active" : "");
+    item.innerHTML = `<div class="db-tbl-name">${escapeHtml(t)}</div>
+                      <div class="db-tbl-meta">${rows.toLocaleString()} rows · ${cols} cols</div>`;
+    item.onclick = () => {
+      dbState.table = t; dbState.page = 0; dbState.sortCol = null; dbState.filter = "";
+      const s = document.getElementById("db-search"); if (s) s.value = "";
+      renderDataBrowser();
+    };
+    list.appendChild(item);
+  }
+  const search = document.getElementById("db-search");
+  search.disabled = false;
+  search.value = dbState.filter;
+  search.oninput = () => { dbState.filter = search.value; dbState.page = 0; renderDataGrid(); };
+  document.getElementById("db-prev").onclick = () => { if (dbState.page > 0) { dbState.page--; renderDataGrid(); } };
+  document.getElementById("db-next").onclick = () => { dbState.page++; renderDataGrid(); };
+  document.getElementById("db-export").onclick = exportCurrentTableCsv;
+  document.getElementById("db-export").disabled = false;
+  renderDataGrid();
+}
+
+function buildFilterClause(columns) {
+  if (!dbState.filter.trim()) return { where: "", params: [] };
+  const needle = `%${dbState.filter.replace(/[%_]/g, m => "\\" + m)}%`;
+  const parts = columns.map(c => `CAST("${c}" AS TEXT) LIKE ? ESCAPE '\\'`);
+  return { where: " WHERE " + parts.join(" OR "), params: columns.map(() => needle) };
+}
+
+function renderDataGrid() {
+  const grid = document.getElementById("db-grid");
+  if (!dbState.table) { grid.innerHTML = ""; return; }
+  let columns;
+  try {
+    columns = db.exec(`PRAGMA table_info("${dbState.table}")`)[0].values.map(r => r[1]);
+  } catch(e) {
+    grid.innerHTML = `<div class="muted">Could not read table: ${escapeHtml(e.message||String(e))}</div>`;
+    return;
+  }
+  const { where, params } = buildFilterClause(columns);
+  let total = 0;
+  try {
+    const stmt = db.prepare(`SELECT COUNT(*) FROM "${dbState.table}"${where}`);
+    stmt.bind(params); stmt.step();
+    total = stmt.get()[0]; stmt.free();
+  } catch(e) {}
+  const pageCount = Math.max(1, Math.ceil(total / dbState.pageSize));
+  if (dbState.page >= pageCount) dbState.page = pageCount - 1;
+  if (dbState.page < 0) dbState.page = 0;
+  const offset = dbState.page * dbState.pageSize;
+  const orderBy = dbState.sortCol
+    ? ` ORDER BY "${dbState.sortCol}" ${dbState.sortDir === "desc" ? "DESC" : "ASC"}`
+    : "";
+  let rows = [];
+  try {
+    const stmt = db.prepare(
+      `SELECT * FROM "${dbState.table}"${where}${orderBy} LIMIT ${dbState.pageSize} OFFSET ${offset}`
+    );
+    stmt.bind(params);
+    while (stmt.step()) rows.push(stmt.get());
+    stmt.free();
+  } catch(e) {
+    grid.innerHTML = `<div class="muted">Query failed: ${escapeHtml(e.message||String(e))}</div>`;
+    return;
+  }
+  let html = `<div class="db-scroll"><table class="result-table db-table"><thead><tr>`;
+  for (const c of columns) {
+    const arrow = dbState.sortCol === c ? (dbState.sortDir === "asc" ? " ▲" : " ▼") : "";
+    html += `<th data-col="${escapeHtml(c)}" class="db-th">${escapeHtml(c)}${arrow}</th>`;
+  }
+  html += `</tr></thead><tbody>`;
+  if (!rows.length) {
+    html += `<tr><td colspan="${columns.length}" class="muted" style="text-align:center;padding:14px">(no rows)</td></tr>`;
+  } else {
+    for (const r of rows) {
+      html += "<tr>" + r.map(v => `<td>${escapeHtml(v == null ? "" : String(v))}</td>`).join("") + "</tr>";
+    }
+  }
+  html += `</tbody></table></div>`;
+  grid.innerHTML = html;
+  grid.querySelectorAll("th.db-th").forEach(th => {
+    th.onclick = () => {
+      const c = th.dataset.col;
+      if (dbState.sortCol === c) dbState.sortDir = dbState.sortDir === "asc" ? "desc" : "asc";
+      else { dbState.sortCol = c; dbState.sortDir = "asc"; }
+      renderDataGrid();
+    };
+  });
+  const start = total ? offset + 1 : 0;
+  const end = Math.min(offset + dbState.pageSize, total);
+  document.getElementById("db-info").textContent =
+    `${start.toLocaleString()}–${end.toLocaleString()} of ${total.toLocaleString()}` +
+    (dbState.filter ? ` (filtered)` : ``);
+  document.getElementById("db-prev").disabled = dbState.page === 0;
+  document.getElementById("db-next").disabled = dbState.page >= pageCount - 1;
+}
+
+function exportCurrentTableCsv() {
+  if (!dbState.table) return;
+  let columns, valuesAll;
+  try {
+    const res = db.exec(`SELECT * FROM "${dbState.table}"`)[0];
+    if (!res) return;
+    columns = res.columns; valuesAll = res.values;
+  } catch(e) { return; }
+  const esc = v => {
+    if (v == null) return "";
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [columns.map(esc).join(",")];
+  for (const row of valuesAll) lines.push(row.map(esc).join(","));
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `${dbState.table}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // =====================================================================
@@ -4109,6 +4314,7 @@ function switchTab(name) {
   document.querySelectorAll(".tab-panel").forEach(p => p.hidden = p.dataset.panel !== name);
   if (name === "saved") renderSaved();
   if (name === "schema") profileAll();
+  if (name === "data") renderDataBrowser();
   sfx.click();
 }
 document.querySelectorAll("nav.tabs button").forEach(b => { b.onclick = () => switchTab(b.dataset.tab); });

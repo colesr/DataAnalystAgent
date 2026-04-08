@@ -19,7 +19,6 @@
     "@anthropic-ai/sdk": "0.39.0",
     "@auth/drizzle-adapter": "1.7.4",
     "@google/generative-ai": "0.21.0",
-    "@sentry/nextjs": "^10.47.0",
     "chart.js": "4.4.7",
     "drizzle-orm": "0.38.3",
     "next": "^16.2.2",

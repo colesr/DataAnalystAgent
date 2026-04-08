@@ -20,6 +20,10 @@ if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Required when running behind a reverse proxy (Railway / Cloudflare / etc.)
+  // so NextAuth trusts the X-Forwarded-Host header instead of throwing
+  // "Invalid URL" when it can't resolve the canonical origin.
+  trustHost: true,
   adapter: DrizzleAdapter(db, {
     usersTable: users,
     accountsTable: accounts,

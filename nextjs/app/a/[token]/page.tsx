@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { analyses } from "@/lib/schema";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { Markdown } from "@/app/_components/Markdown";
 
 type ChartSpec = {
   type: "bar" | "line" | "pie" | "doughnut" | "scatter";
@@ -55,9 +56,7 @@ export default async function ShareView({
       {report.text && (
         <div id="report" className="card">
           <h3>Final Report</h3>
-          <div style={{ whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.55 }}>
-            {report.text}
-          </div>
+          <Markdown>{report.text}</Markdown>
           {charts.length > 0 && (
             <>
               <h4>Charts</h4>

@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AuthMenu } from "./_components/AuthMenu";
+import { ChatBot } from "./_components/ChatBot";
 import { CleanPanel } from "./_components/CleanPanel";
 import { DashboardPanel } from "./_components/DashboardPanel";
+import { Markdown } from "./_components/Markdown";
 import { PivotPanel } from "./_components/PivotPanel";
 import { RealChart } from "./_components/RealChart";
 import { SchemaProfile } from "./_components/SchemaProfile";
@@ -113,7 +115,6 @@ export default function Page() {
   const [tab, setTab] = useState<TabId>("ask");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [soundOn, setSoundOn] = useState(true);
-  const [botOpen, setBotOpen] = useState(false);
 
   // Datasets / data plane
   const [datasets, setDatasets] = useState<DatasetMeta[]>([]);
@@ -294,6 +295,22 @@ export default function Page() {
     [fetchDatasets, selectedDsId, toast]
   );
 
+  const loadDemoData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/datasets/seed", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      if (data.alreadyExists) {
+        toast("info", "Demo data already loaded");
+      } else {
+        toast("success", `Loaded demo_sales (${data.rowCount} rows)`);
+      }
+      await fetchDatasets();
+    } catch (e: any) {
+      toast("err", `Demo seed failed: ${e?.message ?? e}`);
+    }
+  }, [fetchDatasets, toast]);
+
   const clearAllDatasets = useCallback(async () => {
     if (datasets.length === 0) return;
     if (!confirm(`Delete all ${datasets.length} datasets? This drops their tables.`)) return;
@@ -392,6 +409,48 @@ export default function Page() {
   const stopAgent = useCallback(() => {
     agentAbortRef.current?.abort();
   }, []);
+
+  const exportReportMarkdown = useCallback(() => {
+    if (!agentText) return;
+    const parts: string[] = [];
+    parts.push(`# Analysis: ${question || "Untitled"}\n`);
+    parts.push(agentText);
+    if (agentCharts.length > 0) {
+      parts.push("\n\n## Charts");
+      for (const c of agentCharts) {
+        parts.push(`\n### ${c.title}`);
+        parts.push("```json");
+        parts.push(JSON.stringify(c, null, 2));
+        parts.push("```");
+      }
+    }
+    const blob = new Blob([parts.join("\n")], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `analysis-${Date.now()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [agentText, agentCharts, question]);
+
+  const exportFirstChartPng = useCallback(() => {
+    // Grab the first <canvas> the report rendered.
+    const reportEl = document.getElementById("report");
+    const canvas = reportEl?.querySelector("canvas") as HTMLCanvasElement | null;
+    if (!canvas) {
+      toast("err", "No chart to export");
+      return;
+    }
+    try {
+      const url = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `chart-${Date.now()}.png`;
+      a.click();
+    } catch (e: any) {
+      toast("err", `PNG export failed: ${e?.message ?? e}`);
+    }
+  }, [toast]);
 
   // ---- Glossary ----
   const fetchGlossary = useCallback(async () => {
@@ -684,6 +743,9 @@ export default function Page() {
           <h3>
             Data
             <span className="right">
+              <button className="ghost tiny" onClick={loadDemoData}>
+                Load demo data
+              </button>
               <button className="ghost tiny danger" onClick={clearAllDatasets} disabled={!datasets.length}>
                 Clear
               </button>
@@ -866,18 +928,21 @@ export default function Page() {
                   <button className="ghost tiny" onClick={saveCurrentAnalysis}>
                     Save
                   </button>
+                  <button className="ghost tiny" onClick={exportReportMarkdown}>
+                    Export MD
+                  </button>
+                  <button
+                    className="ghost tiny"
+                    onClick={exportFirstChartPng}
+                    disabled={agentCharts.length === 0}
+                  >
+                    Chart PNG
+                  </button>
                 </span>
               </h3>
               {agentText && (
-                <div
-                  id="summary"
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    fontSize: 13,
-                    lineHeight: 1.55,
-                  }}
-                >
-                  {agentText}
+                <div id="summary">
+                  <Markdown>{agentText}</Markdown>
                 </div>
               )}
               {agentCharts.length > 0 && (
@@ -1328,38 +1393,7 @@ export default function Page() {
       ))}
 
       {/* ============ CHATBOT FAB + PANEL ============ */}
-      <button
-        className={`bot-fab ${botOpen ? "active" : ""}`}
-        title="Help"
-        onClick={() => setBotOpen((b) => !b)}
-      >
-        ?
-      </button>
-      {botOpen && (
-        <div className="bot-panel">
-          <div className="bot-header">
-            <span className="bot-title">Help · Digital Data Analyst</span>
-            <button className="close" onClick={() => setBotOpen(false)}>
-              ×
-            </button>
-          </div>
-          <div className="bot-msgs">
-            <div className="bot-msg bot">
-              Hi! I&apos;m the in-app helper. I can answer questions about how to use this app
-              once Phase 3 wires the backend.
-            </div>
-          </div>
-          <div className="bot-suggestions">
-            <button onClick={noop}>How do I upload data?</button>
-            <button onClick={noop}>What can the Tools tab do?</button>
-            <button onClick={noop}>How does the agent work?</button>
-          </div>
-          <div className="bot-input-row">
-            <input type="text" placeholder="Ask anything about the app…" />
-            <button onClick={noop}>→</button>
-          </div>
-        </div>
-      )}
+      <ChatBot model={model} />
     </>
   );
 }

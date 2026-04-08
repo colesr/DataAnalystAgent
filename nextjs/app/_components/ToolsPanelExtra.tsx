@@ -10,6 +10,9 @@
 
 import { useMemo, useState } from "react";
 import { RealChart } from "./RealChart";
+import { SankeyChart } from "./SankeyChart";
+import { TreemapChart } from "./TreemapChart";
+import { LeafletMap } from "./LeafletMap";
 
 type DatasetMeta = {
   id: string;
@@ -984,14 +987,10 @@ function MapTool({ datasets }: { datasets: DatasetMeta[] }) {
         Plot points
       </button>
       <ResultBox loading={loading} error={error}>
-        {points && (
-          <RealChart
-            spec={{
-              type: "scatter",
-              title: `${points.length} points`,
-              labels: points.map((p) => p.lon),
-              datasets: [{ label: "lat", data: points.map((p) => p.lat) }],
-            }}
+        {points && points.length > 0 && (
+          <LeafletMap
+            points={points.map((p) => ({ lat: p.lat, lon: p.lon }))}
+            height={360}
           />
         )}
       </ResultBox>
@@ -1032,10 +1031,19 @@ function SankeyTool({ datasets }: { datasets: DatasetMeta[] }) {
     }
   }
 
+  const flows = useMemo(() => {
+    if (!result) return null;
+    return result.rows.map((r) => ({
+      from: String(r.source),
+      to: String(r.target),
+      flow: Number(r.flow),
+    }));
+  }, [result]);
+
   return (
     <div className="card">
-      <h3>Sankey Flow (table)</h3>
-      <div className="muted">Source → target flows ranked by count.</div>
+      <h3>Sankey Flow</h3>
+      <div className="muted">Source → target flows visualised with the Chart.js sankey plugin.</div>
       <div className="row" style={{ marginTop: 8 }}>
         <div>
           <label className="lbl">Table</label>
@@ -1054,7 +1062,9 @@ function SankeyTool({ datasets }: { datasets: DatasetMeta[] }) {
         Compute flows
       </button>
       <ResultBox loading={loading} error={error}>
-        {result && <ResultTable data={result} />}
+        {flows && flows.length > 0 && (
+          <SankeyChart flows={flows} title={`${src} → ${tgt}`} />
+        )}
       </ResultBox>
     </div>
   );
@@ -1904,20 +1914,18 @@ function TreemapTool({ datasets }: { datasets: DatasetMeta[] }) {
     }
   }
 
-  // Render as a packed div grid where each rect's area is proportional to metric.
   const blocks = useMemo(() => {
     if (!result) return null;
-    const total = result.rows.reduce((a, r) => a + Number(r.metric), 0) || 1;
     return result.rows.map((r) => ({
       label: String(r.category),
-      pct: (Number(r.metric) / total) * 100,
+      value: Number(r.metric) || 0,
     }));
   }, [result]);
 
   return (
     <div className="card">
       <h3>Treemap</h3>
-      <div className="muted">Each rectangle's size is proportional to its share of the total.</div>
+      <div className="muted">Each rectangle's area is proportional to its share of the total.</div>
       <div className="row" style={{ marginTop: 8 }}>
         <div>
           <label className="lbl">Table</label>
@@ -1949,44 +1957,7 @@ function TreemapTool({ datasets }: { datasets: DatasetMeta[] }) {
         Build treemap
       </button>
       <ResultBox loading={loading} error={error}>
-        {blocks && (
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 4,
-              padding: 4,
-              background: "var(--bg)",
-              borderRadius: 4,
-              border: "1px solid var(--border)",
-              minHeight: 240,
-            }}
-          >
-            {blocks.map((b, i) => (
-              <div
-                key={i}
-                title={`${b.label}: ${b.pct.toFixed(1)}%`}
-                style={{
-                  flex: `${Math.max(b.pct, 0.5)} 0 ${Math.max(50, b.pct * 4)}px`,
-                  minHeight: Math.max(40, b.pct * 3),
-                  background: `rgba(167, 139, 250, ${0.2 + b.pct / 100})`,
-                  border: "1px solid var(--border)",
-                  borderRadius: 3,
-                  padding: 6,
-                  fontSize: 11,
-                  color: "var(--text)",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                <div style={{ fontWeight: 600 }}>{b.label}</div>
-                <div className="muted" style={{ fontSize: 10 }}>
-                  {b.pct.toFixed(1)}%
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {blocks && blocks.length > 0 && <TreemapChart blocks={blocks} title={`${agg} by ${catCol}`} />}
       </ResultBox>
     </div>
   );

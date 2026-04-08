@@ -125,22 +125,47 @@ export function SchemaProfile({
                     </div>
                   )}
                   {c.topValues && c.topValues.length > 0 && (
-                    <div style={{ marginTop: 4 }}>
+                    <div style={{ marginTop: 6 }}>
                       {c.topValues.map((tv, i) => {
                         const pct = c.nonNull > 0 ? (tv.count / c.nonNull) * 100 : 0;
                         return (
-                          <div key={i} className="stat">
-                            <span
+                          <div
+                            key={i}
+                            style={{ marginBottom: 3, position: "relative" }}
+                            title={`${tv.value || "∅"}: ${tv.count} (${pct.toFixed(1)}%)`}
+                          >
+                            <div
                               style={{
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                maxWidth: 110,
-                                whiteSpace: "nowrap",
+                                position: "absolute",
+                                inset: 0,
+                                background: `var(--accent)`,
+                                opacity: 0.18,
+                                width: `${pct}%`,
+                                borderRadius: 2,
+                              }}
+                            />
+                            <div
+                              style={{
+                                position: "relative",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                fontSize: 10,
+                                padding: "1px 4px",
                               }}
                             >
-                              {tv.value || "∅"}
-                            </span>
-                            <span>{pct.toFixed(0)}%</span>
+                              <span
+                                style={{
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  maxWidth: 110,
+                                  color: "var(--text)",
+                                }}
+                              >
+                                {tv.value || "∅"}
+                              </span>
+                              <span style={{ color: "var(--muted)" }}>{pct.toFixed(0)}%</span>
+                            </div>
                           </div>
                         );
                       })}

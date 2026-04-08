@@ -1,7 +1,19 @@
+import { eq } from "drizzle-orm";
 import { runAgent } from "@/lib/agent";
+import { db } from "@/lib/db";
+import { glossaryEntries } from "@/lib/schema";
 import { getOrCreateWorkspace } from "@/lib/workspace";
 
 export const runtime = "nodejs";
+
+async function loadGlossary(workspaceId: string): Promise<string> {
+  const rows = await db
+    .select({ name: glossaryEntries.name, definition: glossaryEntries.definition })
+    .from(glossaryEntries)
+    .where(eq(glossaryEntries.workspaceId, workspaceId));
+  if (rows.length === 0) return "";
+  return rows.map((r) => `- **${r.name}**: ${r.definition}`).join("\n");
+}
 
 /**
  * POST /api/agent
@@ -24,6 +36,7 @@ export async function POST(req: Request) {
   if (!model) return new Response("Missing model", { status: 400 });
 
   const ws = await getOrCreateWorkspace();
+  const extraSystem = await loadGlossary(ws.id);
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -45,6 +58,7 @@ export async function POST(req: Request) {
           question,
           model,
           workspace: { id: ws.id, schemaName: ws.schemaName },
+          extraSystem,
           signal: abort.signal,
         })) {
           send(ev);

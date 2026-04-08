@@ -8,7 +8,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { tools as agentTools, findTool } from "./tools";
 import {
-  SYSTEM_PROMPT,
+  buildSystemPrompt,
   type AgentEvent,
   type AgentRunOptions,
   type ChartSpec,
@@ -42,6 +42,8 @@ export async function* runClaude(opts: AgentRunOptions): AsyncIterable<AgentEven
     input_schema: t.input_schema as any,
   }));
 
+  const systemPrompt = buildSystemPrompt(opts.extraSystem);
+
   // Anthropic's MessageParam list — grows each turn.
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: opts.question },
@@ -52,7 +54,7 @@ export async function* runClaude(opts: AgentRunOptions): AsyncIterable<AgentEven
       {
         model: modelId,
         max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         tools: claudeTools,
         messages,
       },

@@ -8,6 +8,13 @@
       "when": 1775614568474,
       "tag": "0000_phase2_workspace_schemas",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1775617524568,
+      "tag": "0001_phase4_alert_run_columns",
+      "breakpoints": true
     }
   ]
 }

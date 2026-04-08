@@ -167,6 +167,7 @@ export const assertions = pgTable(
   (t) => ({ workspaceIdx: index("assertions_workspace_idx").on(t.workspaceId) })
 );
 
+
 // Scheduled re-runs (Phase 4) — cron expression + analysis to re-run
 export const schedules = pgTable(
   "schedules",
@@ -200,7 +201,9 @@ export const alerts = pgTable(
     notifyEmail: text("notify_email"),
     notifySlack: text("notify_slack"),
     enabled: boolean("enabled").notNull().default(true),
+    lastRunAt: timestamp("last_run_at"),
     lastTriggeredAt: timestamp("last_triggered_at"),
+    lastResult: text("last_result"),
   },
   (t) => ({ workspaceIdx: index("alerts_workspace_idx").on(t.workspaceId) })
 );

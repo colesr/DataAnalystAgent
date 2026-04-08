@@ -1,6 +1,11 @@
 import { runClaude } from "./claude";
 import { runGemini } from "./gemini";
-import type { AgentEvent, AgentRunOptions, AgentRunner } from "./types";
+import type {
+  AgentEvent,
+  AgentRunOptions,
+  AgentRunner,
+  ChartSpec,
+} from "./types";
 
 export type { AgentEvent, AgentRunOptions, AgentRunner } from "./types";
 
@@ -22,4 +27,27 @@ export async function* runAgent(opts: AgentRunOptions): AsyncIterable<AgentEvent
     return;
   }
   yield* runner(opts);
+}
+
+/**
+ * Drain a full agent run into a single result object.
+ * Used by the schedule runner where there's no HTTP client to stream to.
+ */
+export async function runAndCollect(opts: AgentRunOptions): Promise<{
+  text: string;
+  charts: ChartSpec[];
+  model: string;
+  error?: string;
+}> {
+  let text = "";
+  const charts: ChartSpec[] = [];
+  let modelId = opts.model;
+  let error: string | undefined;
+  for await (const ev of runAgent(opts)) {
+    if (ev.type === "start") modelId = ev.model;
+    else if (ev.type === "text") text += ev.delta;
+    else if (ev.type === "chart") charts.push(ev.spec);
+    else if (ev.type === "error") error = ev.message;
+  }
+  return { text, charts, model: modelId, error };
 }

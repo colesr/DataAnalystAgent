@@ -45,8 +45,16 @@ export type AgentRunOptions = {
   question: string;
   model: string; // e.g. "claude:claude-sonnet-4-6" or "gemini:gemini-2.5-flash"
   workspace: { id: string; schemaName: string };
+  /** Optional extra text appended to the system prompt (e.g. metric glossary). */
+  extraSystem?: string;
   signal?: AbortSignal;
 };
+
+/** Build the full system prompt for a run, optionally with appended context. */
+export function buildSystemPrompt(extra?: string): string {
+  if (!extra || !extra.trim()) return SYSTEM_PROMPT;
+  return `${SYSTEM_PROMPT}\n\n## Metric glossary (terms defined by this user)\n${extra.trim()}`;
+}
 
 export type AgentRunner = (opts: AgentRunOptions) => AsyncIterable<AgentEvent>;
 

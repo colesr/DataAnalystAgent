@@ -35,6 +35,35 @@ type ChartSpec = {
   datasets: { label: string; data: number[] }[];
 };
 
+type SavedAnalysisMeta = {
+  id: string;
+  name: string;
+  question: string;
+  shareToken: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ScheduleRow = {
+  id: string;
+  analysisId: string;
+  cron: string;
+  enabled: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+};
+
+type AlertRow = {
+  id: string;
+  name: string;
+  sql: string;
+  threshold: string;
+  enabled: boolean;
+  lastRunAt: string | null;
+  lastTriggeredAt: string | null;
+  lastResult: string | null;
+};
+
 type AgentEvent =
   | { type: "start"; model: string }
   | { type: "text"; delta: string }
@@ -129,6 +158,12 @@ export default function Page() {
   const [agentCharts, setAgentCharts] = useState<ChartSpec[]>([]);
   const [agentError, setAgentError] = useState<string | null>(null);
   const agentAbortRef = useRef<AbortController | null>(null);
+
+  // Phase 4: glossary, saved analyses, schedules, alerts
+  const [glossaryText, setGlossaryText] = useState("");
+  const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysisMeta[]>([]);
+  const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
+  const [alerts, setAlerts] = useState<AlertRow[]>([]);
 
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -348,6 +383,221 @@ export default function Page() {
   const stopAgent = useCallback(() => {
     agentAbortRef.current?.abort();
   }, []);
+
+  // ---- Glossary ----
+  const fetchGlossary = useCallback(async () => {
+    try {
+      const res = await fetch("/api/glossary", { cache: "no-store" });
+      if (!res.ok) return;
+      const data: { entries: { name: string; definition: string }[] } = await res.json();
+      setGlossaryText(data.entries.map((e) => `${e.name}: ${e.definition}`).join("\n"));
+    } catch {}
+  }, []);
+
+  const saveGlossary = useCallback(async () => {
+    const entries = glossaryText
+      .split("\n")
+      .map((line) => {
+        const idx = line.indexOf(":");
+        if (idx < 0) return null;
+        return {
+          name: line.slice(0, idx).trim(),
+          definition: line.slice(idx + 1).trim(),
+        };
+      })
+      .filter((e): e is { name: string; definition: string } => Boolean(e?.name && e?.definition));
+    try {
+      const res = await fetch("/api/glossary", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      toast("success", `Saved ${data.count} glossary entries`);
+    } catch (e: any) {
+      toast("err", `Save failed: ${e?.message ?? e}`);
+    }
+  }, [glossaryText, toast]);
+
+  // ---- Saved analyses ----
+  const fetchSavedAnalyses = useCallback(async () => {
+    try {
+      const res = await fetch("/api/analyses", { cache: "no-store" });
+      if (!res.ok) return;
+      const data: { analyses: SavedAnalysisMeta[] } = await res.json();
+      setSavedAnalyses(data.analyses);
+    } catch {}
+  }, []);
+
+  const saveCurrentAnalysis = useCallback(async () => {
+    if (!agentText) return;
+    const name = window.prompt("Name this analysis:", question.slice(0, 60) || "Untitled");
+    if (!name) return;
+    try {
+      const res = await fetch("/api/analyses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          question,
+          report: { text: agentText, charts: agentCharts, model },
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? `HTTP ${res.status}`);
+      }
+      toast("success", `Saved "${name}"`);
+      await fetchSavedAnalyses();
+    } catch (e: any) {
+      toast("err", `Save failed: ${e?.message ?? e}`);
+    }
+  }, [agentText, agentCharts, question, model, fetchSavedAnalyses, toast]);
+
+  const loadSavedAnalysis = useCallback(
+    async (id: string) => {
+      try {
+        const res = await fetch(`/api/analyses/${id}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const report = (data.report ?? {}) as { text?: string; charts?: ChartSpec[]; model?: string };
+        setQuestion(data.question);
+        setAgentText(report.text ?? "");
+        setAgentCharts(report.charts ?? []);
+        setAgentEvents([]);
+        setAgentError(null);
+        if (report.model) setModel(report.model);
+        setTab("ask");
+        toast("info", `Loaded "${data.name}"`);
+      } catch (e: any) {
+        toast("err", `Load failed: ${e?.message ?? e}`);
+      }
+    },
+    [toast]
+  );
+
+  const deleteSavedAnalysis = useCallback(
+    async (id: string, name: string) => {
+      if (!confirm(`Delete saved analysis "${name}"?`)) return;
+      try {
+        const res = await fetch(`/api/analyses/${id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        toast("success", `Deleted "${name}"`);
+        await fetchSavedAnalyses();
+      } catch (e: any) {
+        toast("err", `Delete failed: ${e?.message ?? e}`);
+      }
+    },
+    [fetchSavedAnalyses, toast]
+  );
+
+  const shareSavedAnalysis = useCallback(
+    async (id: string) => {
+      try {
+        const res = await fetch(`/api/analyses/${id}/share`, { method: "POST" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const url = `${window.location.origin}/a/${data.shareToken}`;
+        try {
+          await navigator.clipboard.writeText(url);
+          toast("success", "Share link copied to clipboard");
+        } catch {
+          toast("info", `Share link: ${url}`);
+        }
+        await fetchSavedAnalyses();
+      } catch (e: any) {
+        toast("err", `Share failed: ${e?.message ?? e}`);
+      }
+    },
+    [fetchSavedAnalyses, toast]
+  );
+
+  // ---- Schedules ----
+  const fetchSchedules = useCallback(async () => {
+    try {
+      const res = await fetch("/api/schedules", { cache: "no-store" });
+      if (!res.ok) return;
+      const data: { schedules: ScheduleRow[] } = await res.json();
+      setSchedules(data.schedules);
+    } catch {}
+  }, []);
+
+  const setSchedule = useCallback(
+    async (analysisId: string, cron: string) => {
+      // Drop any existing schedule for this analysis first.
+      try {
+        await fetch(`/api/schedules?analysisId=${analysisId}`, { method: "DELETE" });
+        if (cron && cron !== "off") {
+          const res = await fetch("/api/schedules", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ analysisId, cron }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        }
+        await fetchSchedules();
+        toast("success", cron === "off" ? "Schedule cleared" : `Scheduled ${cron}`);
+      } catch (e: any) {
+        toast("err", `Schedule failed: ${e?.message ?? e}`);
+      }
+    },
+    [fetchSchedules, toast]
+  );
+
+  // ---- Alerts ----
+  const fetchAlerts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/alerts", { cache: "no-store" });
+      if (!res.ok) return;
+      const data: { alerts: AlertRow[] } = await res.json();
+      setAlerts(data.alerts);
+    } catch {}
+  }, []);
+
+  const createAlert = useCallback(
+    async (name: string, sqlText: string, threshold: string) => {
+      try {
+        const res = await fetch("/api/alerts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, sql: sqlText, threshold }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j.error ?? `HTTP ${res.status}`);
+        }
+        toast("success", `Alert "${name}" created`);
+        await fetchAlerts();
+      } catch (e: any) {
+        toast("err", `Create alert failed: ${e?.message ?? e}`);
+      }
+    },
+    [fetchAlerts, toast]
+  );
+
+  const deleteAlert = useCallback(
+    async (id: string, name: string) => {
+      if (!confirm(`Delete alert "${name}"?`)) return;
+      try {
+        const res = await fetch(`/api/alerts?id=${id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        toast("success", `Deleted alert "${name}"`);
+        await fetchAlerts();
+      } catch (e: any) {
+        toast("err", `Delete alert failed: ${e?.message ?? e}`);
+      }
+    },
+    [fetchAlerts, toast]
+  );
+
+  // Load Phase 4 collections once on mount.
+  useEffect(() => {
+    fetchGlossary();
+    fetchSavedAnalyses();
+    fetchSchedules();
+    fetchAlerts();
+  }, [fetchGlossary, fetchSavedAnalyses, fetchSchedules, fetchAlerts]);
 
   const runSql = useCallback(async () => {
     if (!sqlText.trim()) return;
@@ -595,7 +845,14 @@ export default function Page() {
           {/* Final report — markdown text + collected charts */}
           {(agentText || agentCharts.length > 0) && (
             <div id="report" className="card">
-              <h3>Final Report</h3>
+              <h3>
+                Final Report
+                <span className="right">
+                  <button className="ghost tiny" onClick={saveCurrentAnalysis}>
+                    Save
+                  </button>
+                </span>
+              </h3>
               {agentText && (
                 <div
                   id="summary"
@@ -1383,10 +1640,13 @@ export default function Page() {
             <h3>Metric Glossary</h3>
             <div className="muted" style={{ marginBottom: 8 }}>
               One per line: <code>name: definition</code>. Injected into the agent&apos;s system
-              prompt.
+              prompt on every Ask run.
             </div>
             <textarea
               className="code"
+              rows={10}
+              value={glossaryText}
+              onChange={(e) => setGlossaryText(e.target.value)}
               placeholder={
                 "active_user: customer with at least one purchase in the last 30 days\n" +
                 "margin_rate: (revenue - cost) / revenue\n" +
@@ -1394,21 +1654,103 @@ export default function Page() {
                 "last_month: the most recent fully completed calendar month"
               }
             />
-            <button className="primary" onClick={noop}>Save glossary</button>
+            <button className="primary" onClick={saveGlossary}>
+              Save glossary
+            </button>
           </div>
         </section>
 
         {/* ============ SAVED ============ */}
         <section className="tab-panel" hidden={tab !== "saved"}>
           <div className="card">
-            <h3>Saved Analyses</h3>
+            <h3>
+              Saved Analyses <span className="badge">{savedAnalyses.length}</span>
+            </h3>
             <div className="muted" style={{ marginBottom: 8 }}>
-              Click load to restore. Re-run to apply to current data.
+              Load restores the report into the Ask tab. Schedule re-runs the agent on the
+              latest data automatically.
             </div>
-            <div>
-              <div className="muted">No saved analyses yet.</div>
-            </div>
+            {savedAnalyses.length === 0 ? (
+              <div className="muted">
+                No saved analyses yet. Run an analysis on the Ask tab and click Save.
+              </div>
+            ) : (
+              savedAnalyses.map((a) => {
+                const sched = schedules.find((s) => s.analysisId === a.id);
+                return (
+                  <div key={a.id} className="saved-row" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div className="name" style={{ flex: 1 }}>
+                        {a.name}
+                        <div className="meta">
+                          {a.question.length > 80 ? a.question.slice(0, 80) + "…" : a.question}
+                        </div>
+                      </div>
+                      <button className="ghost tiny" onClick={() => loadSavedAnalysis(a.id)}>
+                        Load
+                      </button>
+                      <button className="ghost tiny" onClick={() => shareSavedAnalysis(a.id)}>
+                        {a.shareToken ? "Re-share" : "Share"}
+                      </button>
+                      <button
+                        className="ghost tiny danger"
+                        onClick={() => deleteSavedAnalysis(a.id, a.name)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        marginTop: 6,
+                        paddingTop: 6,
+                        borderTop: "1px solid var(--border)",
+                      }}
+                    >
+                      <span className="muted" style={{ fontSize: 10 }}>
+                        Schedule:
+                      </span>
+                      <select
+                        value={sched?.cron ?? "off"}
+                        onChange={(e) => setSchedule(a.id, e.target.value)}
+                        style={{ width: "auto", flex: "0 0 auto" }}
+                      >
+                        <option value="off">off</option>
+                        <option value="hourly">hourly</option>
+                        <option value="daily">daily</option>
+                        <option value="weekly">weekly</option>
+                      </select>
+                      {sched?.lastRunAt && (
+                        <span className="muted" style={{ fontSize: 10 }}>
+                          last run {new Date(sched.lastRunAt).toLocaleString()}
+                        </span>
+                      )}
+                      {a.shareToken && (
+                        <a
+                          className="muted"
+                          style={{ fontSize: 10, marginLeft: "auto" }}
+                          href={`/a/${a.shareToken}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          /a/{a.shareToken.slice(0, 8)}…
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
+
+          <AlertsCard
+            alerts={alerts}
+            onCreate={createAlert}
+            onDelete={deleteAlert}
+            datasets={datasets}
+          />
         </section>
 
         {/* ============ SCHEMA ============ */}
@@ -1493,6 +1835,110 @@ export default function Page() {
 /* -------------------------------------------------- */
 /* Small layout helpers                                */
 /* -------------------------------------------------- */
+
+function AlertsCard({
+  alerts,
+  onCreate,
+  onDelete,
+  datasets,
+}: {
+  alerts: AlertRow[];
+  onCreate: (name: string, sql: string, threshold: string) => void;
+  onDelete: (id: string, name: string) => void;
+  datasets: DatasetMeta[];
+}) {
+  const [name, setName] = useState("");
+  const [sqlText, setSqlText] = useState("");
+  const [threshold, setThreshold] = useState("0");
+  return (
+    <div className="card">
+      <h3>
+        Alerts <span className="badge">{alerts.length}</span>
+      </h3>
+      <div className="muted" style={{ marginBottom: 8 }}>
+        Each alert is a SQL query that should normally return ≤ <code>threshold</code> rows.
+        When a check finds more, the alert is marked triggered. Checks run via{" "}
+        <code>POST /api/alerts/check</code> (cron-secret protected).
+      </div>
+
+      {alerts.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          {alerts.map((a) => (
+            <div key={a.id} className="qh-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  className="qh-source"
+                  style={{
+                    background: a.lastTriggeredAt ? "rgba(248,113,113,0.15)" : "var(--bg-3)",
+                    color: a.lastTriggeredAt ? "var(--err)" : "var(--muted)",
+                  }}
+                >
+                  {a.lastTriggeredAt ? "triggered" : "ok"}
+                </span>
+                <span style={{ flex: 1, fontWeight: 600 }}>{a.name}</span>
+                <button className="ghost tiny danger" onClick={() => onDelete(a.id, a.name)}>
+                  Delete
+                </button>
+              </div>
+              <div className="qh-sql" style={{ whiteSpace: "normal" }}>
+                {a.sql}
+              </div>
+              <div className="muted" style={{ fontSize: 10 }}>
+                threshold {a.threshold}
+                {a.lastResult && ` · ${a.lastResult}`}
+                {a.lastRunAt && ` · checked ${new Date(a.lastRunAt).toLocaleString()}`}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <input
+          placeholder="Alert name (e.g. 'No negative revenue')"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <textarea
+          className="code"
+          rows={3}
+          placeholder={
+            datasets[0]
+              ? `SELECT * FROM ${datasets[0].tableName} WHERE revenue < 0`
+              : "SELECT * FROM ... WHERE <bad condition>"
+          }
+          value={sqlText}
+          onChange={(e) => setSqlText(e.target.value)}
+        />
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <label className="muted" style={{ fontSize: 11 }}>
+            Threshold:
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={threshold}
+            onChange={(e) => setThreshold(e.target.value)}
+            style={{ width: 80 }}
+          />
+          <button
+            className="primary"
+            style={{ marginTop: 0 }}
+            disabled={!name.trim() || !sqlText.trim()}
+            onClick={() => {
+              onCreate(name.trim(), sqlText.trim(), threshold);
+              setName("");
+              setSqlText("");
+              setThreshold("0");
+            }}
+          >
+            Add alert
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ChartPreview({ spec }: { spec: ChartSpec }) {
   // Lightweight preview — single dataset bar/line as inline SVG, anything

@@ -15,7 +15,7 @@ import {
 } from "@google/generative-ai";
 import { tools as agentTools, findTool } from "./tools";
 import {
-  SYSTEM_PROMPT,
+  buildSystemPrompt,
   type AgentEvent,
   type AgentRunOptions,
   type ChartSpec,
@@ -96,7 +96,7 @@ export async function* runGemini(opts: AgentRunOptions): AsyncIterable<AgentEven
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
     model: modelId,
-    systemInstruction: SYSTEM_PROMPT,
+    systemInstruction: buildSystemPrompt(opts.extraSystem),
     tools: [{ functionDeclarations: toGeminiToolDecls() }],
   });
 

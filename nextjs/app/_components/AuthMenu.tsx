@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Modal } from "./Modal";
 
 type Me = {
   user: { name?: string | null; email?: string | null; image?: string | null } | null;
@@ -18,6 +19,8 @@ export function AuthMenu() {
   const [wsList, setWsList] = useState<WorkspaceListItem[]>([]);
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newWsName, setNewWsName] = useState("");
 
   useEffect(() => {
     fetch("/api/me", { cache: "no-store" })
@@ -48,9 +51,14 @@ export function AuthMenu() {
     }
   }
 
-  async function createWorkspace() {
-    const name = window.prompt("New workspace name:");
-    if (!name?.trim()) return;
+  function openCreate() {
+    setNewWsName("");
+    setCreateDialogOpen(true);
+  }
+
+  async function confirmCreateWorkspace() {
+    const name = newWsName.trim();
+    if (!name) return;
     setCreating(true);
     try {
       const res = await fetch("/api/workspaces", {
@@ -60,7 +68,6 @@ export function AuthMenu() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      // Switch to the new one straight away.
       await fetch(`/api/workspaces/${data.id}/switch`, { method: "POST" });
       window.location.reload();
     } catch (e: any) {
@@ -184,7 +191,7 @@ export function AuthMenu() {
           </div>
           <button
             className="ghost"
-            onClick={createWorkspace}
+            onClick={openCreate}
             disabled={creating}
             style={{ display: "block", marginTop: 6, width: "100%", textAlign: "center" }}
           >
@@ -217,6 +224,38 @@ export function AuthMenu() {
           </a>
         </div>
       )}
+
+      <Modal
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        title="New workspace"
+        footer={
+          <>
+            <button className="ghost" onClick={() => setCreateDialogOpen(false)} disabled={creating}>
+              Cancel
+            </button>
+            <button
+              className="primary"
+              style={{ marginTop: 0 }}
+              onClick={confirmCreateWorkspace}
+              disabled={!newWsName.trim() || creating}
+            >
+              {creating ? "Creating…" : "Create"}
+            </button>
+          </>
+        }
+      >
+        <label className="lbl">Workspace name</label>
+        <input
+          value={newWsName}
+          onChange={(e) => setNewWsName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") confirmCreateWorkspace();
+          }}
+          placeholder="My team"
+          disabled={creating}
+        />
+      </Modal>
     </div>
   );
 }

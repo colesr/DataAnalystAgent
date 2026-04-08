@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Modal } from "./Modal";
 import { RealChart } from "./RealChart";
 
 type Dashboard = { id: string; name: string };
@@ -38,6 +39,8 @@ export function DashboardPanel({
   const [tileTitle, setTileTitle] = useState("");
   const [tileSql, setTileSql] = useState("");
   const [tileType, setTileType] = useState<string>("bar");
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newDashName, setNewDashName] = useState("");
 
   const fetchList = useCallback(async () => {
     try {
@@ -70,8 +73,13 @@ export function DashboardPanel({
     fetchActive();
   }, [fetchActive]);
 
-  async function createDashboard() {
-    const name = prompt("Dashboard name:");
+  function openCreateDialog() {
+    setNewDashName("");
+    setCreateDialogOpen(true);
+  }
+
+  async function confirmCreateDashboard() {
+    const name = newDashName.trim();
     if (!name) return;
     try {
       const res = await fetch("/api/dashboards", {
@@ -82,6 +90,7 @@ export function DashboardPanel({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setActiveId(data.id);
+      setCreateDialogOpen(false);
       await fetchList();
       toast("success", `Created "${name}"`);
     } catch (e: any) {
@@ -165,7 +174,7 @@ export function DashboardPanel({
               </option>
             ))}
           </select>
-          <button className="ghost tiny" onClick={createDashboard}>
+          <button className="ghost tiny" onClick={openCreateDialog}>
             + New
           </button>
           <button
@@ -239,6 +248,37 @@ export function DashboardPanel({
           activeTiles.map((t) => <TileView key={t.id} tile={t} onDelete={deleteTile} />)
         )}
       </div>
+
+      <Modal
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        title="New dashboard"
+        footer={
+          <>
+            <button className="ghost" onClick={() => setCreateDialogOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="primary"
+              style={{ marginTop: 0 }}
+              onClick={confirmCreateDashboard}
+              disabled={!newDashName.trim()}
+            >
+              Create
+            </button>
+          </>
+        }
+      >
+        <label className="lbl">Name</label>
+        <input
+          value={newDashName}
+          onChange={(e) => setNewDashName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") confirmCreateDashboard();
+          }}
+          placeholder="Q4 KPIs"
+        />
+      </Modal>
     </>
   );
 }

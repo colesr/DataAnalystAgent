@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Modal } from "./Modal";
 
 type DatasetMeta = {
   id: string;
@@ -22,6 +23,10 @@ export function CleanPanel({
   toast: ToastFn;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [parseDialogOpen, setParseDialogOpen] = useState(false);
+  const [parseCol, setParseCol] = useState("");
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [newCol, setNewCol] = useState({ name: "", type: "double precision", expression: "" });
 
   useEffect(() => {
     if (!selectedId && datasets[0]) setSelectedId(datasets[0].id);
@@ -51,15 +56,18 @@ export function CleanPanel({
     }
   }
 
-  async function parseDates() {
+  function openParseDates() {
     if (!ds) return;
-    const col = window.prompt(
-      `Which column to parse as a date?\nColumns: ${ds.columns.map((c) => c.name).join(", ")}`
-    );
-    if (!col) return;
+    setParseCol(ds.columns[0]?.name ?? "");
+    setParseDialogOpen(true);
+  }
+
+  async function confirmParseDates() {
+    if (!parseCol) return;
     try {
-      await call({ op: "parse_dates", column: col });
-      toast("success", `Parsed ${col} as timestamptz`);
+      await call({ op: "parse_dates", column: parseCol });
+      toast("success", `Parsed ${parseCol} as timestamptz`);
+      setParseDialogOpen(false);
       onChanged();
     } catch (e: any) {
       toast("err", e?.message ?? String(e));
@@ -79,18 +87,23 @@ export function CleanPanel({
     }
   }
 
-  async function addColumn() {
+  function openAddColumn() {
     if (!ds) return;
-    const name = window.prompt("New column name:");
-    if (!name) return;
-    const type =
-      window.prompt("Type (double precision / integer / text / boolean):", "double precision") ??
-      "double precision";
-    const expression = window.prompt("Expression (raw SQL, e.g. revenue - cost):");
-    if (!expression) return;
+    setNewCol({ name: "", type: "double precision", expression: "" });
+    setAddDialogOpen(true);
+  }
+
+  async function confirmAddColumn() {
+    if (!newCol.name.trim() || !newCol.expression.trim()) return;
     try {
-      await call({ op: "add_column", name, type, expression });
-      toast("success", `Added ${name}`);
+      await call({
+        op: "add_column",
+        name: newCol.name.trim(),
+        type: newCol.type,
+        expression: newCol.expression.trim(),
+      });
+      toast("success", `Added ${newCol.name}`);
+      setAddDialogOpen(false);
       onChanged();
     } catch (e: any) {
       toast("err", e?.message ?? String(e));
@@ -139,16 +152,96 @@ export function CleanPanel({
         <button className="ghost" onClick={dedupe}>
           Remove duplicate rows
         </button>
-        <button className="ghost" onClick={parseDates}>
+        <button className="ghost" onClick={openParseDates}>
           Parse a column as dates
         </button>
-        <button className="ghost" onClick={addColumn}>
+        <button className="ghost" onClick={openAddColumn}>
           Add calculated column
         </button>
         <button className="ghost danger" onClick={dropTable}>
           Drop table
         </button>
       </div>
+
+      <Modal
+        open={parseDialogOpen}
+        onClose={() => setParseDialogOpen(false)}
+        title="Parse column as dates"
+        footer={
+          <>
+            <button className="ghost" onClick={() => setParseDialogOpen(false)}>
+              Cancel
+            </button>
+            <button className="primary" style={{ marginTop: 0 }} onClick={confirmParseDates}>
+              Parse
+            </button>
+          </>
+        }
+      >
+        <label className="lbl">Column</label>
+        <select value={parseCol} onChange={(e) => setParseCol(e.target.value)}>
+          {ds?.columns.map((c) => (
+            <option key={c.name} value={c.name}>
+              {c.name} ({c.type})
+            </option>
+          ))}
+        </select>
+        <div className="muted" style={{ fontSize: 10, marginTop: 6 }}>
+          Unparseable values become NULL.
+        </div>
+      </Modal>
+
+      <Modal
+        open={addDialogOpen}
+        onClose={() => setAddDialogOpen(false)}
+        title="Add calculated column"
+        maxWidth={500}
+        footer={
+          <>
+            <button className="ghost" onClick={() => setAddDialogOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="primary"
+              style={{ marginTop: 0 }}
+              onClick={confirmAddColumn}
+              disabled={!newCol.name.trim() || !newCol.expression.trim()}
+            >
+              Add column
+            </button>
+          </>
+        }
+      >
+        <label className="lbl">Name</label>
+        <input
+          value={newCol.name}
+          onChange={(e) => setNewCol({ ...newCol, name: e.target.value })}
+          placeholder="margin"
+        />
+        <label className="lbl" style={{ marginTop: 8 }}>
+          Type
+        </label>
+        <select
+          value={newCol.type}
+          onChange={(e) => setNewCol({ ...newCol, type: e.target.value })}
+        >
+          <option>double precision</option>
+          <option>integer</option>
+          <option>text</option>
+          <option>boolean</option>
+          <option>timestamptz</option>
+        </select>
+        <label className="lbl" style={{ marginTop: 8 }}>
+          Expression
+        </label>
+        <textarea
+          className="code"
+          rows={3}
+          value={newCol.expression}
+          onChange={(e) => setNewCol({ ...newCol, expression: e.target.value })}
+          placeholder="revenue - cost"
+        />
+      </Modal>
     </div>
   );
 }

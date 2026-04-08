@@ -5,7 +5,9 @@ import { AuthMenu } from "./_components/AuthMenu";
 import { ChatBot } from "./_components/ChatBot";
 import { CleanPanel } from "./_components/CleanPanel";
 import { DashboardPanel } from "./_components/DashboardPanel";
+import { ImportDialog } from "./_components/ImportDialog";
 import { Markdown } from "./_components/Markdown";
+import { Modal } from "./_components/Modal";
 import { PivotPanel } from "./_components/PivotPanel";
 import { RealChart } from "./_components/RealChart";
 import { SchemaProfile } from "./_components/SchemaProfile";
@@ -159,6 +161,12 @@ export default function Page() {
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
 
+  // Phase 13: dialog open states
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(0);
@@ -295,62 +303,13 @@ export default function Page() {
     [fetchDatasets, selectedDsId, toast]
   );
 
-  const importFromUrl = useCallback(async () => {
-    const url = window.prompt("CSV/XLSX URL:");
-    if (!url) return;
-    try {
-      const res = await fetch("/api/datasets/import-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      toast("success", `Imported ${data.tableName} (${data.rowCount} rows)`);
+  const onImportSuccess = useCallback(
+    async (result: { tableName: string; rowCount: number }) => {
+      toast("success", `Imported ${result.tableName} (${result.rowCount} rows)`);
       await fetchDatasets();
-    } catch (e: any) {
-      toast("err", `Import failed: ${e?.message ?? e}`);
-    }
-  }, [fetchDatasets, toast]);
-
-  const importFromGSheet = useCallback(async () => {
-    const url = window.prompt("Google Sheets URL (must be 'anyone with the link can view'):");
-    if (!url) return;
-    try {
-      const res = await fetch("/api/datasets/import-gsheet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      toast("success", `Imported ${data.tableName} (${data.rowCount} rows)`);
-      await fetchDatasets();
-    } catch (e: any) {
-      toast("err", `Import failed: ${e?.message ?? e}`);
-    }
-  }, [fetchDatasets, toast]);
-
-  const importFromPostgres = useCallback(async () => {
-    const dsn = window.prompt("Postgres DSN (postgres://user:pass@host:port/db):");
-    if (!dsn) return;
-    const query = window.prompt("SELECT query:");
-    if (!query) return;
-    const name = window.prompt("Name for the imported table (optional):", "imported");
-    try {
-      const res = await fetch("/api/datasets/import-postgres", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dsn, query, name: name || undefined }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      toast("success", `Imported ${data.tableName} (${data.rowCount} rows)`);
-      await fetchDatasets();
-    } catch (e: any) {
-      toast("err", `Import failed: ${e?.message ?? e}`);
-    }
-  }, [fetchDatasets, toast]);
+    },
+    [fetchDatasets, toast]
+  );
 
   const loadDemoData = useCallback(async () => {
     try {
@@ -555,9 +514,14 @@ export default function Page() {
     } catch {}
   }, []);
 
-  const saveCurrentAnalysis = useCallback(async () => {
+  const openSaveDialog = useCallback(() => {
     if (!agentText) return;
-    const name = window.prompt("Name this analysis:", question.slice(0, 60) || "Untitled");
+    setSaveName(question.slice(0, 60) || "Untitled analysis");
+    setSaveDialogOpen(true);
+  }, [agentText, question]);
+
+  const confirmSaveAnalysis = useCallback(async () => {
+    const name = saveName.trim();
     if (!name) return;
     try {
       const res = await fetch("/api/analyses", {
@@ -574,11 +538,12 @@ export default function Page() {
         throw new Error(j.error ?? `HTTP ${res.status}`);
       }
       toast("success", `Saved "${name}"`);
+      setSaveDialogOpen(false);
       await fetchSavedAnalyses();
     } catch (e: any) {
       toast("err", `Save failed: ${e?.message ?? e}`);
     }
-  }, [agentText, agentCharts, question, model, fetchSavedAnalyses, toast]);
+  }, [saveName, agentText, agentCharts, question, model, fetchSavedAnalyses, toast]);
 
   const loadSavedAnalysis = useCallback(
     async (id: string) => {
@@ -724,6 +689,13 @@ export default function Page() {
     fetchAlerts();
   }, [fetchGlossary, fetchSavedAnalyses, fetchSchedules, fetchAlerts]);
 
+  // Show the first-run welcome modal on a visitor's first session.
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem("dda_welcome_seen")) setWelcomeOpen(true);
+    } catch {}
+  }, []);
+
   const runSql = useCallback(async () => {
     if (!sqlText.trim()) return;
     setSqlRunning(true);
@@ -803,14 +775,8 @@ export default function Page() {
               <button className="ghost tiny" onClick={loadDemoData}>
                 Load demo data
               </button>
-              <button className="ghost tiny" onClick={importFromUrl}>
-                Import URL
-              </button>
-              <button className="ghost tiny" onClick={importFromGSheet}>
-                Import Sheet
-              </button>
-              <button className="ghost tiny" onClick={importFromPostgres}>
-                Import Postgres
+              <button className="ghost tiny" onClick={() => setImportDialogOpen(true)}>
+                Import…
               </button>
               <button className="ghost tiny danger" onClick={clearAllDatasets} disabled={!datasets.length}>
                 Clear
@@ -991,7 +957,7 @@ export default function Page() {
               <h3>
                 Final Report
                 <span className="right">
-                  <button className="ghost tiny" onClick={saveCurrentAnalysis}>
+                  <button className="ghost tiny" onClick={openSaveDialog}>
                     Save
                   </button>
                   <button className="ghost tiny" onClick={exportReportMarkdown}>
@@ -1446,6 +1412,99 @@ export default function Page() {
           <SchemaProfile datasets={datasets} onError={(m) => toast("err", m)} />
         </section>
       </div>
+
+      {/* ============ DIALOGS ============ */}
+      <ImportDialog
+        open={importDialogOpen}
+        onClose={() => setImportDialogOpen(false)}
+        onImported={onImportSuccess}
+      />
+
+      <Modal
+        open={saveDialogOpen}
+        onClose={() => setSaveDialogOpen(false)}
+        title="Save analysis"
+        footer={
+          <>
+            <button className="ghost" onClick={() => setSaveDialogOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="primary"
+              style={{ marginTop: 0 }}
+              onClick={confirmSaveAnalysis}
+              disabled={!saveName.trim()}
+            >
+              Save
+            </button>
+          </>
+        }
+      >
+        <label className="lbl">Name</label>
+        <input
+          value={saveName}
+          onChange={(e) => setSaveName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") confirmSaveAnalysis();
+          }}
+          placeholder="Untitled analysis"
+        />
+      </Modal>
+
+      <Modal
+        open={welcomeOpen}
+        onClose={() => {
+          setWelcomeOpen(false);
+          try {
+            localStorage.setItem("dda_welcome_seen", "1");
+          } catch {}
+        }}
+        title="Welcome to Digital Data Analyst"
+        maxWidth={520}
+        footer={
+          <>
+            <button
+              className="ghost"
+              onClick={() => {
+                setWelcomeOpen(false);
+                try {
+                  localStorage.setItem("dda_welcome_seen", "1");
+                } catch {}
+              }}
+            >
+              Skip
+            </button>
+            <button
+              className="primary"
+              style={{ marginTop: 0 }}
+              onClick={async () => {
+                try {
+                  localStorage.setItem("dda_welcome_seen", "1");
+                } catch {}
+                setWelcomeOpen(false);
+                await loadDemoData();
+                setQuestion("Which region had the highest revenue last month?");
+                setTab("ask");
+              }}
+            >
+              Try a sample question
+            </button>
+          </>
+        }
+      >
+        <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+          <p style={{ margin: "0 0 8px" }}>
+            This is an AI-assisted data analyst. You upload CSVs (or paste a Sheet/Postgres
+            URL), then ask questions in plain English — the agent runs SQL against your data
+            and writes a markdown report.
+          </p>
+          <p style={{ margin: "8px 0" }}>
+            <strong>Click "Try a sample question"</strong> below to load a small demo dataset
+            and ask the agent about it. You can also use the <strong>?</strong> button at the
+            bottom-right for help anytime.
+          </p>
+        </div>
+      </Modal>
 
       {/* ============ TOASTS ============ */}
       {toasts.map((t, i) => (

@@ -1,0 +1,44 @@
+name: Cron triggers
+
+# GitHub Actions cron is best-effort and fires roughly every 5 min at the
+# fastest. That's fine: schedules just decide when to *check* for due runs,
+# they aren't real-time.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   APP_URL      e.g. https://dataanalystagent.up.railway.app
+#   CRON_SECRET  same value as the CRON_SECRET env var on Railway
+
+on:
+  workflow_dispatch: {} # lets you run it manually from the Actions tab
+  schedule:
+    - cron: "*/5 * * * *"  # every 5 min — drives both jobs below
+
+permissions:
+  contents: read
+
+jobs:
+  run-schedules:
+    name: POST /api/schedules/run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit schedules runner
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/schedules/run"
+
+  check-alerts:
+    name: POST /api/alerts/check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit alerts checker
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/alerts/check"

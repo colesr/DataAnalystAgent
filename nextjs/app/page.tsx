@@ -28,6 +28,22 @@ type SqlResponse = {
   durationMs: number;
 };
 
+type ChartSpec = {
+  type: "bar" | "line" | "pie" | "doughnut" | "scatter";
+  title: string;
+  labels: (string | number)[];
+  datasets: { label: string; data: number[] }[];
+};
+
+type AgentEvent =
+  | { type: "start"; model: string }
+  | { type: "text"; delta: string }
+  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | { type: "tool_result"; id: string; name: string; output?: unknown; error?: string }
+  | { type: "chart"; spec: ChartSpec }
+  | { type: "done"; reason: string }
+  | { type: "error"; message: string };
+
 type Toast = { id: number; kind: "info" | "success" | "err"; text: string };
 
 type TabId =
@@ -103,6 +119,16 @@ export default function Page() {
   const [sqlResult, setSqlResult] = useState<SqlResponse | null>(null);
   const [sqlError, setSqlError] = useState<string | null>(null);
   const [sqlRunning, setSqlRunning] = useState(false);
+
+  // Agent / Ask
+  const [model, setModel] = useState("gemini:gemini-2.5-flash");
+  const [question, setQuestion] = useState("");
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([]);
+  const [agentText, setAgentText] = useState("");
+  const [agentCharts, setAgentCharts] = useState<ChartSpec[]>([]);
+  const [agentError, setAgentError] = useState<string | null>(null);
+  const agentAbortRef = useRef<AbortController | null>(null);
 
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -256,6 +282,73 @@ export default function Page() {
     }
   }, [datasets, fetchDatasets, toast]);
 
+  const runAgent = useCallback(async () => {
+    const q = question.trim();
+    if (!q) return;
+    setAgentRunning(true);
+    setAgentEvents([]);
+    setAgentText("");
+    setAgentCharts([]);
+    setAgentError(null);
+
+    const ctrl = new AbortController();
+    agentAbortRef.current = ctrl;
+
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q, model }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok || !res.body) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          if (!part.startsWith("data: ")) continue;
+          const json = part.slice(6).trim();
+          if (!json) continue;
+          let ev: AgentEvent;
+          try {
+            ev = JSON.parse(json) as AgentEvent;
+          } catch {
+            continue;
+          }
+          // Append the event so the trace UI re-renders.
+          setAgentEvents((prev) => [...prev, ev]);
+          if (ev.type === "text") {
+            setAgentText((prev) => prev + ev.delta);
+          } else if (ev.type === "chart") {
+            setAgentCharts((prev) => [...prev, ev.spec]);
+          } else if (ev.type === "error") {
+            setAgentError(ev.message);
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        setAgentError(e?.message ?? String(e));
+      }
+    } finally {
+      setAgentRunning(false);
+      agentAbortRef.current = null;
+    }
+  }, [question, model]);
+
+  const stopAgent = useCallback(() => {
+    agentAbortRef.current?.abort();
+  }, []);
+
   const runSql = useCallback(async () => {
     if (!sqlText.trim()) return;
     setSqlRunning(true);
@@ -324,15 +417,14 @@ export default function Page() {
         {/* Model card */}
         <div className="card">
           <h3>Model</h3>
-          <select defaultValue="gemini:gemini-2.5-flash" style={{ marginBottom: 10 }}>
+          <select value={model} onChange={(e) => setModel(e.target.value)}>
             <option value="gemini:gemini-2.5-flash">Gemini 2.5 Flash — free</option>
             <option value="claude:claude-sonnet-4-6">Claude Sonnet 4.6 — balanced</option>
             <option value="claude:claude-opus-4-6">Claude Opus 4.6 — most capable</option>
             <option value="claude:claude-haiku-4-5-20251001">Claude Haiku 4.5 — fastest</option>
           </select>
-          <input type="password" placeholder="" />
           <div className="muted" style={{ marginTop: 6 }}>
-            Phase 1 — UI only. Backend wiring lands in phase 3.
+            Server-side keys. No BYOK in this build.
           </div>
         </div>
 
@@ -392,17 +484,149 @@ export default function Page() {
             <h3>
               Question
               <span className="right">
-                <button className="ghost tiny" onClick={noop}>
+                <button
+                  className="ghost tiny"
+                  disabled={agentRunning}
+                  onClick={() => {
+                    setQuestion("");
+                    setAgentEvents([]);
+                    setAgentText("");
+                    setAgentCharts([]);
+                    setAgentError(null);
+                  }}
+                >
                   New conversation
                 </button>
               </span>
             </h3>
-            <textarea placeholder="e.g. Why did our retail margins drop in the Boston suburbs last month?" />
+            <textarea
+              placeholder="e.g. Why did our retail margins drop in the Boston suburbs last month?"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  if (!agentRunning) runAgent();
+                }
+              }}
+              rows={3}
+            />
+            {datasets.length === 0 && (
+              <div className="muted" style={{ marginTop: 6 }}>
+                Tip: upload a CSV/Excel file above so the agent has data to analyze.
+              </div>
+            )}
             <div style={{ marginTop: 6 }} />
-            <button className="primary" onClick={noop}>
-              Run analysis
-            </button>
+            {!agentRunning ? (
+              <button
+                className="primary"
+                onClick={runAgent}
+                disabled={!question.trim()}
+              >
+                Run analysis
+              </button>
+            ) : (
+              <button className="primary" onClick={stopAgent}>
+                <span className="spinner" /> Stop
+              </button>
+            )}
+            <span className="muted" style={{ marginLeft: 8 }}>
+              ⌘/Ctrl+Enter
+            </span>
           </div>
+
+          {/* Trace of tool calls + thinking */}
+          {(agentEvents.length > 0 || agentRunning) && (
+            <div className="card">
+              <h3>Trace</h3>
+              {agentEvents
+                .filter((e) => e.type === "tool_use" || e.type === "tool_result" || e.type === "error")
+                .map((e, i) => {
+                  if (e.type === "tool_use") {
+                    return (
+                      <div key={i} className={`trace-step tool-${e.name === "query_sql" ? "sql" : ""}`}>
+                        <div className="label">
+                          <span className="tag">{e.name}</span>
+                          <span>tool call</span>
+                        </div>
+                        <pre>{JSON.stringify(e.input, null, 2)}</pre>
+                      </div>
+                    );
+                  }
+                  if (e.type === "tool_result") {
+                    const isErr = e.error != null;
+                    return (
+                      <div key={i} className={`trace-step ${isErr ? "err" : ""}`}>
+                        <div className="label">
+                          <span className="tag">{e.name}</span>
+                          <span>{isErr ? "error" : "result"}</span>
+                        </div>
+                        <pre>
+                          {isErr
+                            ? e.error
+                            : JSON.stringify(e.output, null, 2).slice(0, 4000)}
+                        </pre>
+                      </div>
+                    );
+                  }
+                  if (e.type === "error") {
+                    return (
+                      <div key={i} className="trace-step err">
+                        <div className="label">
+                          <span className="tag">error</span>
+                        </div>
+                        <pre>{e.message}</pre>
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+              {agentRunning && (
+                <div className="muted" style={{ marginTop: 8 }}>
+                  <span className="thinking-pulse" />
+                  <span className="thinking-pulse" />
+                  <span className="thinking-pulse" />{" "}
+                  thinking…
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Final report — markdown text + collected charts */}
+          {(agentText || agentCharts.length > 0) && (
+            <div id="report" className="card">
+              <h3>Final Report</h3>
+              {agentText && (
+                <div
+                  id="summary"
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    fontSize: 13,
+                    lineHeight: 1.55,
+                  }}
+                >
+                  {agentText}
+                </div>
+              )}
+              {agentCharts.length > 0 && (
+                <>
+                  <h4>Charts</h4>
+                  <div className="charts-grid">
+                    {agentCharts.map((c, i) => (
+                      <ChartPreview key={i} spec={c} />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {agentError && (
+            <div className="card" style={{ borderColor: "var(--err)" }}>
+              <h3 style={{ color: "var(--err)" }}>Error</h3>
+              <pre style={{ whiteSpace: "pre-wrap" }}>{agentError}</pre>
+            </div>
+          )}
         </section>
 
         {/* ============ DATA BROWSER ============ */}
@@ -1269,6 +1493,95 @@ export default function Page() {
 /* -------------------------------------------------- */
 /* Small layout helpers                                */
 /* -------------------------------------------------- */
+
+function ChartPreview({ spec }: { spec: ChartSpec }) {
+  // Lightweight preview — single dataset bar/line as inline SVG, anything
+  // more elaborate falls back to a value table. Real Chart.js rendering
+  // can land in a later phase.
+  const ds = spec.datasets[0];
+  const isBarLike = (spec.type === "bar" || spec.type === "line") && ds && ds.data.length > 0;
+  if (isBarLike) {
+    const max = Math.max(...ds.data, 0);
+    const min = Math.min(...ds.data, 0);
+    const range = max - min || 1;
+    const W = 320;
+    const H = 120;
+    const padX = 8;
+    const padY = 8;
+    const barW = (W - padX * 2) / ds.data.length;
+    return (
+      <div className="chart-wrap" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, color: "var(--text)" }}>
+          {spec.title}
+        </div>
+        <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+          {spec.type === "bar"
+            ? ds.data.map((v, i) => {
+                const h = ((v - min) / range) * (H - padY * 2);
+                return (
+                  <rect
+                    key={i}
+                    x={padX + i * barW + 1}
+                    y={H - padY - h}
+                    width={Math.max(1, barW - 2)}
+                    height={h}
+                    fill="var(--accent)"
+                  />
+                );
+              })
+            : (() => {
+                const pts = ds.data
+                  .map(
+                    (v, i) =>
+                      `${padX + i * barW + barW / 2},${
+                        H - padY - ((v - min) / range) * (H - padY * 2)
+                      }`
+                  )
+                  .join(" ");
+                return (
+                  <polyline
+                    points={pts}
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth="2"
+                  />
+                );
+              })()}
+        </svg>
+        <div className="muted" style={{ marginTop: 4, fontSize: 10 }}>
+          {spec.type} · {ds.label} · {ds.data.length} pts
+        </div>
+      </div>
+    );
+  }
+  // Fallback: render labels + first dataset as a small table
+  return (
+    <div className="chart-wrap" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+      <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, color: "var(--text)" }}>
+        {spec.title} <span className="muted">({spec.type})</span>
+      </div>
+      <table className="db-table">
+        <tbody>
+          {spec.labels.slice(0, 12).map((lbl, i) => (
+            <tr key={i}>
+              <td>{String(lbl)}</td>
+              <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                {ds?.data[i] ?? ""}
+              </td>
+            </tr>
+          ))}
+          {spec.labels.length > 12 && (
+            <tr>
+              <td colSpan={2} className="muted">
+                …{spec.labels.length - 12} more
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function formatCell(v: unknown): string {
   if (v === null || v === undefined) return "";

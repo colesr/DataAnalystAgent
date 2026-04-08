@@ -9,6 +9,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { tools as agentTools, findTool } from "./tools";
 import {
   buildSystemPrompt,
+  estimateCost,
   type AgentEvent,
   type AgentRunOptions,
   type ChartSpec,
@@ -44,10 +45,16 @@ export async function* runClaude(opts: AgentRunOptions): AsyncIterable<AgentEven
 
   const systemPrompt = buildSystemPrompt(opts.extraSystem);
 
-  // Anthropic's MessageParam list — grows each turn.
-  const messages: Anthropic.MessageParam[] = [
-    { role: "user", content: opts.question },
-  ];
+  // Anthropic's MessageParam list — seeded with prior conversation history
+  // (text-only) plus the new user question.
+  const messages: Anthropic.MessageParam[] = [];
+  for (const turn of opts.history ?? []) {
+    messages.push({ role: turn.role, content: turn.text });
+  }
+  messages.push({ role: "user", content: opts.question });
+
+  let totalInput = 0;
+  let totalOutput = 0;
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const stream = client.messages.stream(
@@ -80,6 +87,8 @@ export async function* runClaude(opts: AgentRunOptions): AsyncIterable<AgentEven
     }
 
     const finalMessage = await stream.finalMessage();
+    totalInput += finalMessage.usage?.input_tokens ?? 0;
+    totalOutput += finalMessage.usage?.output_tokens ?? 0;
 
     // Push the assistant turn into history exactly as the SDK assembled it.
     messages.push({ role: "assistant", content: finalMessage.content });
@@ -89,6 +98,12 @@ export async function* runClaude(opts: AgentRunOptions): AsyncIterable<AgentEven
     );
 
     if (toolUses.length === 0 || finalMessage.stop_reason === "end_turn") {
+      yield {
+        type: "usage",
+        inputTokens: totalInput,
+        outputTokens: totalOutput,
+        estCostUsd: estimateCost(modelId, totalInput, totalOutput),
+      };
       yield { type: "done", reason: "stop" };
       return;
     }
@@ -136,5 +151,11 @@ export async function* runClaude(opts: AgentRunOptions): AsyncIterable<AgentEven
     messages.push({ role: "user", content: toolResults });
   }
 
+  yield {
+    type: "usage",
+    inputTokens: totalInput,
+    outputTokens: totalOutput,
+    estCostUsd: estimateCost(modelId, totalInput, totalOutput),
+  };
   yield { type: "done", reason: "max_turns" };
 }

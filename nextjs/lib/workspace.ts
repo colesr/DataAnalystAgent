@@ -27,9 +27,34 @@ export type Workspace = typeof workspaces.$inferSelect;
 export async function getOrCreateWorkspace(): Promise<Workspace> {
   const session = await auth();
   const userId = (session?.user as any)?.id as string | undefined;
+  const jar = await cookies();
+  const cookieVal = jar.get(COOKIE_NAME)?.value;
 
-  // Signed-in user → return their first workspace, create one if needed.
   if (userId) {
+    // First: try to claim the cookie's anonymous workspace if there is one.
+    // This carries any data the user uploaded pre-signin into their account.
+    if (cookieVal) {
+      const [cookieWs] = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.id, cookieVal))
+        .limit(1);
+      if (cookieWs) {
+        if (cookieWs.userId == null) {
+          await db
+            .update(workspaces)
+            .set({ userId })
+            .where(eq(workspaces.id, cookieWs.id));
+          return { ...cookieWs, userId };
+        }
+        if (cookieWs.userId === userId) {
+          return cookieWs;
+        }
+        // Cookie points at someone else's workspace — ignore it.
+      }
+    }
+
+    // Otherwise: return the user's first workspace, creating one if needed.
     const existing = await db
       .select()
       .from(workspaces)
@@ -37,14 +62,10 @@ export async function getOrCreateWorkspace(): Promise<Workspace> {
       .limit(1);
     if (existing[0]) return existing[0];
 
-    const ws = await createWorkspace(userId);
-    return ws;
+    return await createWorkspace(userId);
   }
 
   // Anonymous → look up by cookie, or create + set cookie.
-  const jar = await cookies();
-  const cookieVal = jar.get(COOKIE_NAME)?.value;
-
   if (cookieVal) {
     const existing = await db
       .select()

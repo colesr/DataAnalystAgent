@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AuthMenu } from "./_components/AuthMenu";
+import { DashboardPanel } from "./_components/DashboardPanel";
+import { RealChart } from "./_components/RealChart";
+import { SchemaProfile } from "./_components/SchemaProfile";
+import { ToolsPanel } from "./_components/ToolsPanel";
 
 type DatasetMeta = {
   id: string;
@@ -70,6 +75,7 @@ type AgentEvent =
   | { type: "tool_use"; id: string; name: string; input: unknown }
   | { type: "tool_result"; id: string; name: string; output?: unknown; error?: string }
   | { type: "chart"; spec: ChartSpec }
+  | { type: "usage"; inputTokens: number; outputTokens: number; estCostUsd: number }
   | { type: "done"; reason: string }
   | { type: "error"; message: string };
 
@@ -87,17 +93,6 @@ type TabId =
   | "saved"
   | "schema";
 
-type Cat =
-  | "all"
-  | "profile"
-  | "aggregate"
-  | "stats"
-  | "modeling"
-  | "analytics"
-  | "engineering"
-  | "quality"
-  | "viz";
-
 const TABS: { id: TabId; label: string }[] = [
   { id: "ask", label: "Ask" },
   { id: "data", label: "Data" },
@@ -111,23 +106,10 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "schema", label: "Schema" },
 ];
 
-const CATS: { id: Cat; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "profile", label: "Profile" },
-  { id: "aggregate", label: "Aggregate" },
-  { id: "stats", label: "Statistics" },
-  { id: "modeling", label: "Modeling" },
-  { id: "analytics", label: "Analytics" },
-  { id: "engineering", label: "Engineering" },
-  { id: "quality", label: "Quality" },
-  { id: "viz", label: "Visualization" },
-];
-
 export default function Page() {
   const [tab, setTab] = useState<TabId>("ask");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [soundOn, setSoundOn] = useState(true);
-  const [activeCat, setActiveCat] = useState<Cat>("all");
   const [botOpen, setBotOpen] = useState(false);
 
   // Datasets / data plane
@@ -157,6 +139,14 @@ export default function Page() {
   const [agentText, setAgentText] = useState("");
   const [agentCharts, setAgentCharts] = useState<ChartSpec[]>([]);
   const [agentError, setAgentError] = useState<string | null>(null);
+  const [agentUsage, setAgentUsage] = useState<{
+    inputTokens: number;
+    outputTokens: number;
+    estCostUsd: number;
+  } | null>(null);
+  // Follow-up support: history accumulates {role, text} after each successful run.
+  const [convHistory, setConvHistory] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
+  const [followupText, setFollowupText] = useState("");
   const agentAbortRef = useRef<AbortController | null>(null);
 
   // Phase 4: glossary, saved analyses, schedules, alerts
@@ -317,23 +307,24 @@ export default function Page() {
     }
   }, [datasets, fetchDatasets, toast]);
 
-  const runAgent = useCallback(async () => {
-    const q = question.trim();
-    if (!q) return;
+  const runAgent = useCallback(async (q: string, history: { role: "user" | "assistant"; text: string }[] = []) => {
+    if (!q.trim()) return;
     setAgentRunning(true);
     setAgentEvents([]);
     setAgentText("");
     setAgentCharts([]);
     setAgentError(null);
+    setAgentUsage(null);
 
     const ctrl = new AbortController();
     agentAbortRef.current = ctrl;
 
+    let collectedText = "";
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, model }),
+        body: JSON.stringify({ question: q, model, history }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) {
@@ -362,13 +353,28 @@ export default function Page() {
           // Append the event so the trace UI re-renders.
           setAgentEvents((prev) => [...prev, ev]);
           if (ev.type === "text") {
+            collectedText += ev.delta;
             setAgentText((prev) => prev + ev.delta);
           } else if (ev.type === "chart") {
             setAgentCharts((prev) => [...prev, ev.spec]);
+          } else if (ev.type === "usage") {
+            setAgentUsage({
+              inputTokens: ev.inputTokens,
+              outputTokens: ev.outputTokens,
+              estCostUsd: ev.estCostUsd,
+            });
           } else if (ev.type === "error") {
             setAgentError(ev.message);
           }
         }
+      }
+      // On success, append turn to history so a follow-up can include it.
+      if (collectedText) {
+        setConvHistory((prev) => [
+          ...prev,
+          { role: "user", text: q },
+          { role: "assistant", text: collectedText },
+        ]);
       }
     } catch (e: any) {
       if (e?.name !== "AbortError") {
@@ -378,7 +384,7 @@ export default function Page() {
       setAgentRunning(false);
       agentAbortRef.current = null;
     }
-  }, [question, model]);
+  }, [model]);
 
   const stopAgent = useCallback(() => {
     agentAbortRef.current?.abort();
@@ -652,15 +658,7 @@ export default function Page() {
             >
               ♪
             </button>
-            <a
-              className="icon-btn"
-              href="https://aistudio.google.com/apikey"
-              target="_blank"
-              rel="noreferrer"
-              title="Get free API key"
-            >
-              ⚷
-            </a>
+            <AuthMenu />
           </div>
         </header>
 
@@ -734,15 +732,23 @@ export default function Page() {
             <h3>
               Question
               <span className="right">
+                {convHistory.length > 0 && (
+                  <span className="muted" style={{ fontSize: 10, marginRight: 8 }}>
+                    {convHistory.length / 2} turn{convHistory.length / 2 === 1 ? "" : "s"} in convo
+                  </span>
+                )}
                 <button
                   className="ghost tiny"
                   disabled={agentRunning}
                   onClick={() => {
                     setQuestion("");
+                    setFollowupText("");
                     setAgentEvents([]);
                     setAgentText("");
                     setAgentCharts([]);
                     setAgentError(null);
+                    setAgentUsage(null);
+                    setConvHistory([]);
                   }}
                 >
                   New conversation
@@ -756,7 +762,7 @@ export default function Page() {
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                   e.preventDefault();
-                  if (!agentRunning) runAgent();
+                  if (!agentRunning) runAgent(question, []);
                 }
               }}
               rows={3}
@@ -770,7 +776,7 @@ export default function Page() {
             {!agentRunning ? (
               <button
                 className="primary"
-                onClick={runAgent}
+                onClick={() => runAgent(question, [])}
                 disabled={!question.trim()}
               >
                 Run analysis
@@ -839,6 +845,12 @@ export default function Page() {
                   thinking…
                 </div>
               )}
+              {agentUsage && (
+                <div className="muted" style={{ marginTop: 8, fontSize: 10 }}>
+                  {agentUsage.inputTokens.toLocaleString()} in /{" "}
+                  {agentUsage.outputTokens.toLocaleString()} out tokens · est ${agentUsage.estCostUsd.toFixed(4)}
+                </div>
+              )}
             </div>
           )}
 
@@ -870,11 +882,45 @@ export default function Page() {
                   <h4>Charts</h4>
                   <div className="charts-grid">
                     {agentCharts.map((c, i) => (
-                      <ChartPreview key={i} spec={c} />
+                      <RealChart key={i} spec={c} />
                     ))}
                   </div>
                 </>
               )}
+            </div>
+          )}
+
+          {/* Follow-up — only show after a successful run */}
+          {agentText && !agentRunning && (
+            <div className="card">
+              <h3>Follow-up</h3>
+              <textarea
+                rows={2}
+                placeholder="Ask a follow-up that builds on this analysis…"
+                value={followupText}
+                onChange={(e) => setFollowupText(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    if (followupText.trim()) {
+                      const fq = followupText.trim();
+                      setFollowupText("");
+                      runAgent(fq, convHistory);
+                    }
+                  }
+                }}
+              />
+              <button
+                className="primary"
+                disabled={!followupText.trim()}
+                onClick={() => {
+                  const fq = followupText.trim();
+                  setFollowupText("");
+                  runAgent(fq, convHistory);
+                }}
+              >
+                Continue
+              </button>
             </div>
           )}
 
@@ -1012,456 +1058,12 @@ export default function Page() {
 
         {/* ============ TOOLS ============ */}
         <section className="tab-panel" hidden={tab !== "tools"}>
-          <div className="tool-toolbar">
-            <input type="search" placeholder="Search tools…" />
-            <div className="cat-chips">
-              {CATS.map((c) => (
-                <button
-                  key={c.id}
-                  className={`chip ${activeCat === c.id ? "active" : ""}`}
-                  onClick={() => setActiveCat(c.id)}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <ToolCard title="Distribution / Histogram" hint="Or click any column in the Schema tab.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Column"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>View distribution</button>
-          </ToolCard>
-
-          <ToolCard title="Correlation Matrix" hint="Pearson correlations between numeric columns.">
-            <Row>
-              <Field label="Table"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Compute correlations</button>
-            <div className="tool-result" />
-          </ToolCard>
-
-          <ToolCard title="Forecast" hint="Aggregate by date and project a linear trend N periods forward.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Date col"><select /></Field>
-              <Field label="Value col"><select /></Field>
-              <Field label="Aggregate">
-                <select>
-                  <option>SUM</option>
-                  <option>AVG</option>
-                  <option>COUNT</option>
-                </select>
-              </Field>
-              <Field label="Periods">
-                <input type="number" defaultValue={14} min={1} max={365} />
-              </Field>
-            </Row>
-            <button className="primary" onClick={noop}>Forecast</button>
-          </ToolCard>
-
-          <ToolCard title="Outlier Detection (IQR)" hint="Flag rows where the column is outside Q1−1.5·IQR or Q3+1.5·IQR.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Column"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Find outliers</button>
-          </ToolCard>
-
-          <ToolCard title="Period-over-Period" hint="Bucket a metric by time period and compute lift between periods.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Date col"><select /></Field>
-              <Field label="Value col"><select /></Field>
-              <Field label="Aggregate">
-                <select>
-                  <option>SUM</option>
-                  <option>AVG</option>
-                  <option>COUNT</option>
-                </select>
-              </Field>
-              <Field label="Period">
-                <select defaultValue="month">
-                  <option>day</option>
-                  <option>week</option>
-                  <option value="month">month</option>
-                  <option>quarter</option>
-                  <option>year</option>
-                </select>
-              </Field>
-            </Row>
-            <button className="primary" onClick={noop}>Compare</button>
-          </ToolCard>
-
-          <ToolCard title="Group-by Builder" hint="Quick aggregation without writing SQL.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Group by"><select /></Field>
-              <Field label="Value"><select /></Field>
-              <Field label="Aggregate">
-                <select>
-                  <option>SUM</option>
-                  <option>AVG</option>
-                  <option>COUNT</option>
-                  <option>MIN</option>
-                  <option>MAX</option>
-                </select>
-              </Field>
-              <Field label="Order">
-                <select>
-                  <option value="DESC">↓ Desc</option>
-                  <option value="ASC">↑ Asc</option>
-                </select>
-              </Field>
-            </Row>
-            <button className="primary" onClick={noop}>Run</button>
-          </ToolCard>
-
-          <ToolCard title="Two-Sample T-Test" hint="Compare means of a numeric column between two groups in a categorical column.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Group col"><select /></Field>
-              <Field label="Value col"><select /></Field>
-            </Row>
-            <Row>
-              <Field label="Group A"><select /></Field>
-              <Field label="Group B"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Run t-test</button>
-          </ToolCard>
-
-          <ToolCard title="Join Tables" hint="Visual join builder. Preview, then save the result as a new table.">
-            <Row>
-              <Field label="Left table"><select /></Field>
-              <Field label="Left key"><select /></Field>
-              <Field label="Type">
-                <select>
-                  <option>INNER</option>
-                  <option>LEFT</option>
-                  <option>RIGHT</option>
-                </select>
-              </Field>
-              <Field label="Right table"><select /></Field>
-              <Field label="Right key"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Preview join</button>
-            <button className="ghost" style={{ marginLeft: 6 }} onClick={noop}>
-              Save as table
-            </button>
-          </ToolCard>
-
-          <ToolCard title="Cohort Retention" hint="Group users by signup period and track retention over time.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="User ID"><select /></Field>
-              <Field label="Signup date"><select /></Field>
-              <Field label="Activity date"><select /></Field>
-              <Field label="Period">
-                <select defaultValue="month">
-                  <option>week</option>
-                  <option value="month">month</option>
-                </select>
-              </Field>
-            </Row>
-            <button className="primary" onClick={noop}>Compute retention</button>
-          </ToolCard>
-
-          <ToolCard title="Linear Regression" hint="OLS fit. Returns coefficients, R², and a scatter + fit line chart.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="y (dependent)"><select /></Field>
-              <Field label="x (independent)"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Fit</button>
-          </ToolCard>
-
-          <ToolCard title="Pareto / 80-20" hint="Sort categories by metric and find the top contributors driving 80% of total.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Category"><select /></Field>
-              <Field label="Value"><select /></Field>
-              <Field label="Aggregate">
-                <select>
-                  <option>SUM</option>
-                  <option>COUNT</option>
-                  <option>AVG</option>
-                </select>
-              </Field>
-            </Row>
-            <button className="primary" onClick={noop}>Build Pareto</button>
-          </ToolCard>
-
-          <ToolCard title="A/B Test Sample Size" hint="Required sample size per variant for a two-proportion z-test.">
-            <Row>
-              <Field label="Baseline (%)"><input type="number" defaultValue={10} step={0.1} /></Field>
-              <Field label="MDE (% abs)"><input type="number" defaultValue={2} step={0.1} /></Field>
-              <Field label="Confidence (%)"><input type="number" defaultValue={95} /></Field>
-              <Field label="Power (%)"><input type="number" defaultValue={80} /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Calculate</button>
-          </ToolCard>
-
-          <ToolCard title="Funnel Analysis" hint="Conversion through ordered steps. Each step is a value in the event column.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="User col"><select /></Field>
-              <Field label="Event col"><select /></Field>
-            </Row>
-            <div style={{ marginTop: 8 }}>
-              <label className="lbl">Steps (one per line, in order)</label>
-              <textarea className="code" placeholder={"visit\nsignup\npurchase"} />
-            </div>
-            <button className="primary" onClick={noop}>Compute funnel</button>
-          </ToolCard>
-
-          <ToolCard title="Window Functions" hint="Generate window function SQL without writing it.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Function">
-                <select>
-                  <option>ROW_NUMBER</option>
-                  <option>RANK</option>
-                  <option>DENSE_RANK</option>
-                  <option>LAG</option>
-                  <option>LEAD</option>
-                  <option>SUM (running)</option>
-                  <option>AVG (running)</option>
-                </select>
-              </Field>
-              <Field label="Value col"><select /></Field>
-              <Field label="Partition by"><select /></Field>
-              <Field label="Order by"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Run</button>
-          </ToolCard>
-
-          <ToolCard title="Quantile Bucketing" hint="Bin a numeric column into N equal-frequency buckets and add the result as a new column.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Column"><select /></Field>
-              <Field label="Buckets">
-                <select defaultValue="10">
-                  <option>4</option>
-                  <option value="10">10</option>
-                  <option>20</option>
-                  <option>100</option>
-                </select>
-              </Field>
-            </Row>
-            <button className="primary" onClick={noop}>Add bucket column</button>
-          </ToolCard>
-
-          <ToolCard title="Normalize Column" hint="Add a standardized version of a numeric column.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Column"><select /></Field>
-              <Field label="Method">
-                <select>
-                  <option>z-score</option>
-                  <option>min-max (0-1)</option>
-                </select>
-              </Field>
-            </Row>
-            <button className="primary" onClick={noop}>Add normalized column</button>
-          </ToolCard>
-
-          <ToolCard title="Geographic Map" hint="Plot points from a table with latitude/longitude columns.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Latitude"><select /></Field>
-              <Field label="Longitude"><select /></Field>
-              <Field label="Label"><select /></Field>
-              <Field label="Size by (optional)"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Render map</button>
-          </ToolCard>
-
-          <ToolCard title="Sankey Flow Diagram" hint="Visualize flows between source and target categories.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Source"><select /></Field>
-              <Field label="Target"><select /></Field>
-              <Field label="Value (optional)"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Build Sankey</button>
-          </ToolCard>
-
-          <ToolCard
-            title="Survival Curve (Kaplan-Meier)"
-            hint="Estimate survival probability over time. Time = duration observed, Event = 1 if churned/died, 0 if censored."
-          >
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Time col"><select /></Field>
-              <Field label="Event col (1/0)"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Compute</button>
-          </ToolCard>
-
-          <ToolCard title="Multi-variable Regression" hint="OLS with multiple X columns. Returns coefficients and R².">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="y (dependent)"><select /></Field>
-            </Row>
-            <div style={{ marginTop: 8 }}>
-              <label className="lbl">X columns (Ctrl/Cmd-click for multiple)</label>
-              <select multiple size={6} />
-            </div>
-            <button className="primary" onClick={noop}>Fit</button>
-          </ToolCard>
-
-          <ToolCard title="Chi-Squared Test" hint="Test independence between two categorical columns.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Column A"><select /></Field>
-              <Field label="Column B"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Run test</button>
-          </ToolCard>
-
-          <div className="card">
-            <h3>
-              Data Dictionary
-              <span className="right">
-                <button className="ghost tiny" onClick={noop}>Export MD</button>
-                <button className="ghost tiny" onClick={noop}>Export CSV</button>
-              </span>
-            </h3>
-            <div className="muted">
-              Auto-generated documentation of every column. Inline notes are saved to localStorage.
-            </div>
-            <button className="primary" onClick={noop}>Build dictionary</button>
-          </div>
-
-          <div className="tools-divider">Data Engineering</div>
-
-          <ToolCard
-            title="Date Dimensions"
-            hint="Explode a date column into year, quarter, month, week, day-of-week, day-of-month, day-of-year, is_weekend."
-          >
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Date column"><select /></Field>
-            </Row>
-            <button className="primary" onClick={noop}>Add date columns</button>
-          </ToolCard>
-
-          <ToolCard
-            title="Sessionization"
-            hint="Group events into sessions by user. New session when the gap between events exceeds N minutes."
-          >
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="User col"><select /></Field>
-              <Field label="Timestamp col"><select /></Field>
-              <Field label="Idle gap (min)">
-                <input type="number" defaultValue={30} min={1} />
-              </Field>
-            </Row>
-            <button className="primary" onClick={noop}>Add session_id</button>
-          </ToolCard>
-
-          <ToolCard title="Rolling Window" hint="Add a rolling-window aggregate column (e.g. 7-day moving average).">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Value col"><select /></Field>
-              <Field label="Order by"><select /></Field>
-              <Field label="Function">
-                <select>
-                  <option>AVG</option>
-                  <option>SUM</option>
-                  <option>MIN</option>
-                  <option>MAX</option>
-                </select>
-              </Field>
-              <Field label="Window size">
-                <input type="number" defaultValue={7} min={2} />
-              </Field>
-            </Row>
-            <button className="primary" onClick={noop}>Add rolling column</button>
-          </ToolCard>
-
-          <ToolCard
-            title="K-means Clustering"
-            hint="Cluster rows into K groups based on selected numeric columns. Adds cluster_id column. Features are z-scored."
-          >
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="K (clusters)">
-                <input type="number" defaultValue={3} min={2} max={20} />
-              </Field>
-            </Row>
-            <div style={{ marginTop: 8 }}>
-              <label className="lbl">Features (Ctrl/Cmd-click for multiple)</label>
-              <select multiple size={6} />
-            </div>
-            <button className="primary" onClick={noop}>Cluster</button>
-          </ToolCard>
-
-          <div className="tools-divider">Quality</div>
-
-          <div className="card">
-            <h3>Data Assertions</h3>
-            <div className="muted">
-              Each line: <code>description | SQL that should return 0 rows</code>. Saved to
-              localStorage. Run any time to validate the data.
-            </div>
-            <textarea
-              className="code"
-              placeholder={
-                "No negative revenue | SELECT * FROM sales WHERE revenue < 0\n" +
-                "Every store has a region | SELECT * FROM stores WHERE region IS NULL\n" +
-                "Cost never exceeds revenue | SELECT * FROM sales WHERE cost > revenue"
-              }
-            />
-            <button className="primary" onClick={noop}>Run assertions</button>
-          </div>
-
-          <div className="tools-divider">Visualization</div>
-
-          <ToolCard title="Treemap" hint="Hierarchical area chart. Each rectangle's size is proportional to the metric.">
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Category"><select /></Field>
-              <Field label="Value"><select /></Field>
-              <Field label="Aggregate">
-                <select>
-                  <option>SUM</option>
-                  <option>COUNT</option>
-                  <option>AVG</option>
-                </select>
-              </Field>
-            </Row>
-            <button className="primary" onClick={noop}>Build treemap</button>
-          </ToolCard>
+          <ToolsPanel datasets={datasets} />
         </section>
 
         {/* ============ DASHBOARD ============ */}
         <section className="tab-panel" hidden={tab !== "dashboard"}>
-          <div className="card">
-            <h3>
-              Dashboard
-              <span className="right">
-                <button className="ghost tiny" onClick={noop}>+ Add tile</button>
-              </span>
-            </h3>
-            <div className="dash-toolbar">
-              <select />
-              <input placeholder="Dashboard name" style={{ flex: 1 }} />
-              <button className="ghost tiny" onClick={noop}>+ New</button>
-              <button className="ghost tiny" onClick={noop}>Save</button>
-              <button className="ghost tiny danger" onClick={noop}>Delete</button>
-            </div>
-            <div className="muted" style={{ marginTop: 8 }}>
-              Combine SQL queries into a custom dashboard. Tiles support bar / line / pie /
-              doughnut / big number / table / treemap. All data stays in your browser.
-            </div>
-          </div>
-          <div className="dash-grid">
-            <div className="dash-empty">No tiles yet. Click + Add tile to start.</div>
-          </div>
+          <DashboardPanel toast={toast} />
         </section>
 
         {/* ============ CLEAN ============ */}
@@ -1755,32 +1357,7 @@ export default function Page() {
 
         {/* ============ SCHEMA ============ */}
         <section className="tab-panel" hidden={tab !== "schema"}>
-          <div className="card">
-            <h3>
-              Data Profile <span className="badge">0 columns</span>
-            </h3>
-            <div className="muted" style={{ marginBottom: 8 }}>
-              Click any column to see its distribution.
-            </div>
-            <div className="profile-grid" />
-          </div>
-          <div className="card">
-            <h3>Schema Text (sent to agent)</h3>
-            <pre
-              style={{
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: 4,
-                padding: 10,
-                margin: 0,
-                fontSize: 11,
-                whiteSpace: "pre-wrap",
-                fontFamily: "ui-monospace, monospace",
-              }}
-            >
-              (no tables loaded)
-            </pre>
-          </div>
+          <SchemaProfile datasets={datasets} onError={(m) => toast("err", m)} />
         </section>
       </div>
 
@@ -1940,102 +1517,6 @@ function AlertsCard({
   );
 }
 
-function ChartPreview({ spec }: { spec: ChartSpec }) {
-  // Lightweight preview — single dataset bar/line as inline SVG, anything
-  // more elaborate falls back to a value table. Real Chart.js rendering
-  // can land in a later phase.
-  const ds = spec.datasets[0];
-  const isBarLike = (spec.type === "bar" || spec.type === "line") && ds && ds.data.length > 0;
-  if (isBarLike) {
-    const max = Math.max(...ds.data, 0);
-    const min = Math.min(...ds.data, 0);
-    const range = max - min || 1;
-    const W = 320;
-    const H = 120;
-    const padX = 8;
-    const padY = 8;
-    const barW = (W - padX * 2) / ds.data.length;
-    return (
-      <div className="chart-wrap" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, color: "var(--text)" }}>
-          {spec.title}
-        </div>
-        <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-          {spec.type === "bar"
-            ? ds.data.map((v, i) => {
-                const h = ((v - min) / range) * (H - padY * 2);
-                return (
-                  <rect
-                    key={i}
-                    x={padX + i * barW + 1}
-                    y={H - padY - h}
-                    width={Math.max(1, barW - 2)}
-                    height={h}
-                    fill="var(--accent)"
-                  />
-                );
-              })
-            : (() => {
-                const pts = ds.data
-                  .map(
-                    (v, i) =>
-                      `${padX + i * barW + barW / 2},${
-                        H - padY - ((v - min) / range) * (H - padY * 2)
-                      }`
-                  )
-                  .join(" ");
-                return (
-                  <polyline
-                    points={pts}
-                    fill="none"
-                    stroke="var(--accent)"
-                    strokeWidth="2"
-                  />
-                );
-              })()}
-        </svg>
-        <div className="muted" style={{ marginTop: 4, fontSize: 10 }}>
-          {spec.type} · {ds.label} · {ds.data.length} pts
-        </div>
-      </div>
-    );
-  }
-  // Fallback: render labels + first dataset as a small table
-  return (
-    <div className="chart-wrap" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-      <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, color: "var(--text)" }}>
-        {spec.title} <span className="muted">({spec.type})</span>
-      </div>
-      <table className="db-table">
-        <tbody>
-          {spec.labels.slice(0, 12).map((lbl, i) => (
-            <tr key={i}>
-              <td>{String(lbl)}</td>
-              <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                {ds?.data[i] ?? ""}
-              </td>
-            </tr>
-          ))}
-          {spec.labels.length > 12 && (
-            <tr>
-              <td colSpan={2} className="muted">
-                …{spec.labels.length - 12} more
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function formatCell(v: unknown): string {
-  if (v === null || v === undefined) return "";
-  if (v instanceof Date) return v.toISOString();
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
 function Row({ children }: { children: React.ReactNode }) {
   return (
     <div className="row" style={{ marginTop: 8 }}>
@@ -2053,21 +1534,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function ToolCard({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="card">
-      <h3>{title}</h3>
-      {hint && <div className="muted">{hint}</div>}
-      {children}
-    </div>
-  );
+function formatCell(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
 }
+
 

@@ -187,6 +187,56 @@ export const schedules = pgTable(
   (t) => ({ workspaceIdx: index("schedules_workspace_idx").on(t.workspaceId) })
 );
 
+// Dashboards (Phase 5) — named collections of SQL-backed tiles
+export const dashboards = pgTable(
+  "dashboards",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => ({ workspaceIdx: index("dashboards_workspace_idx").on(t.workspaceId) })
+);
+
+export const dashboardTiles = pgTable(
+  "dashboard_tiles",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    dashboardId: uuid("dashboard_id")
+      .notNull()
+      .references(() => dashboards.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    sql: text("sql").notNull(),
+    chartType: text("chart_type").notNull(), // bar | line | pie | doughnut | scatter | big_number | table
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => ({ dashboardIdx: index("dashboard_tiles_dashboard_idx").on(t.dashboardId) })
+);
+
+// Agent runs (Phase 5) — token usage + cost telemetry per Ask invocation
+export const agentRuns = pgTable(
+  "agent_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    model: text("model").notNull(),
+    question: text("question").notNull(),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    durationMs: integer("duration_ms").notNull().default(0),
+    error: text("error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => ({ workspaceIdx: index("agent_runs_workspace_idx").on(t.workspaceId) })
+);
+
 // Alerts (Phase 4) — SQL + threshold + notification target
 export const alerts = pgTable(
   "alerts",

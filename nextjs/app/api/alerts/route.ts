@@ -13,7 +13,13 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  let body: { name?: string; sql?: string; threshold?: string; enabled?: boolean };
+  let body: {
+    name?: string;
+    sql?: string;
+    threshold?: string;
+    enabled?: boolean;
+    notifyEmail?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -22,6 +28,7 @@ export async function POST(req: Request) {
   const name = (body.name ?? "").trim();
   const sql = (body.sql ?? "").trim();
   const threshold = (body.threshold ?? "0").toString().trim();
+  const notifyEmail = (body.notifyEmail ?? "").trim() || null;
   if (!name) return NextResponse.json({ error: "Missing name" }, { status: 400 });
   if (!sql) return NextResponse.json({ error: "Missing sql" }, { status: 400 });
   if (!/^\d+$/.test(threshold)) {
@@ -29,6 +36,9 @@ export async function POST(req: Request) {
       { error: "threshold must be a non-negative integer (alert fires when rows > threshold)" },
       { status: 400 }
     );
+  }
+  if (notifyEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(notifyEmail)) {
+    return NextResponse.json({ error: "Invalid notifyEmail" }, { status: 400 });
   }
 
   const ws = await getOrCreateWorkspace();
@@ -40,6 +50,7 @@ export async function POST(req: Request) {
       sql,
       threshold,
       enabled: body.enabled ?? true,
+      notifyEmail,
     })
     .returning();
   return NextResponse.json(row);

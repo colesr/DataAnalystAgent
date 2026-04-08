@@ -16,6 +16,7 @@ import {
 import { tools as agentTools, findTool } from "./tools";
 import {
   buildSystemPrompt,
+  estimateCost,
   type AgentEvent,
   type AgentRunOptions,
   type ChartSpec,
@@ -109,9 +110,17 @@ export async function* runGemini(opts: AgentRunOptions): AsyncIterable<AgentEven
   };
 
   // Conversation history. Gemini uses "user" / "model" roles, not "assistant".
-  const contents: Content[] = [
-    { role: "user", parts: [{ text: opts.question }] },
-  ];
+  const contents: Content[] = [];
+  for (const turn of opts.history ?? []) {
+    contents.push({
+      role: turn.role === "assistant" ? "model" : "user",
+      parts: [{ text: turn.text }],
+    });
+  }
+  contents.push({ role: "user", parts: [{ text: opts.question }] });
+
+  let totalInput = 0;
+  let totalOutput = 0;
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     let result;
@@ -142,6 +151,8 @@ export async function* runGemini(opts: AgentRunOptions): AsyncIterable<AgentEven
     const finalResp = await result.response;
     const candidate = finalResp.candidates?.[0];
     const parts = candidate?.content?.parts ?? [];
+    totalInput += finalResp.usageMetadata?.promptTokenCount ?? 0;
+    totalOutput += finalResp.usageMetadata?.candidatesTokenCount ?? 0;
 
     // Persist the model turn into history.
     contents.push({ role: "model", parts });
@@ -153,6 +164,12 @@ export async function* runGemini(opts: AgentRunOptions): AsyncIterable<AgentEven
       .map((p) => p.functionCall);
 
     if (fnCalls.length === 0) {
+      yield {
+        type: "usage",
+        inputTokens: totalInput,
+        outputTokens: totalOutput,
+        estCostUsd: estimateCost(modelId, totalInput, totalOutput),
+      };
       yield { type: "done", reason: "stop" };
       return;
     }
@@ -193,5 +210,11 @@ export async function* runGemini(opts: AgentRunOptions): AsyncIterable<AgentEven
     contents.push({ role: "user", parts: toolResultParts as any });
   }
 
+  yield {
+    type: "usage",
+    inputTokens: totalInput,
+    outputTokens: totalOutput,
+    estCostUsd: estimateCost(modelId, totalInput, totalOutput),
+  };
   yield { type: "done", reason: "max_turns" };
 }

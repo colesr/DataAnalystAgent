@@ -15,6 +15,13 @@
       "when": 1775617524568,
       "tag": "0001_phase4_alert_run_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775619263676,
+      "tag": "0002_phase5_dashboards_agent_runs",
+      "breakpoints": true
     }
   ]
 }

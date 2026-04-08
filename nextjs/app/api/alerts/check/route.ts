@@ -1,11 +1,42 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import { Resend } from "resend";
 import { db } from "@/lib/db";
 import { alerts, workspaces } from "@/lib/schema";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
+
+async function sendAlertEmail(opts: {
+  to: string;
+  alertName: string;
+  rowCount: number;
+  threshold: number;
+  workspaceId: string;
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn("[alert] RESEND_API_KEY not set — skipping email send");
+    return;
+  }
+  const from = process.env.RESEND_FROM ?? "alerts@digital-data-analyst.dev";
+  try {
+    const resend = new Resend(apiKey);
+    await resend.emails.send({
+      from,
+      to: opts.to,
+      subject: `Alert triggered: ${opts.alertName}`,
+      text:
+        `Alert "${opts.alertName}" returned ${opts.rowCount} rows ` +
+        `(threshold ${opts.threshold}).\n` +
+        `Workspace: ${opts.workspaceId}\n` +
+        `Triggered at: ${new Date().toISOString()}\n`,
+    });
+  } catch (e) {
+    console.error("[alert] resend send failed:", e);
+  }
+}
 
 /**
  * POST /api/alerts/check
@@ -63,6 +94,15 @@ export async function POST(req: Request) {
         console.warn(
           `[alert] TRIGGERED: ${a.name} (workspace=${ws.id}) → ${rowCount} rows > ${threshold}`
         );
+        if (a.notifyEmail) {
+          await sendAlertEmail({
+            to: a.notifyEmail,
+            alertName: a.name,
+            rowCount,
+            threshold,
+            workspaceId: ws.id,
+          });
+        }
       }
       results.push({ id: a.id, name: a.name, rows: rowCount, triggered });
     } catch (e: any) {

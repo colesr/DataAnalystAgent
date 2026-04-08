@@ -23,8 +23,12 @@ export type AgentEvent =
   | { type: "tool_use"; id: string; name: string; input: unknown }
   | { type: "tool_result"; id: string; name: string; output?: unknown; error?: string }
   | { type: "chart"; spec: ChartSpec }
+  | { type: "usage"; inputTokens: number; outputTokens: number; estCostUsd: number }
   | { type: "done"; reason: "stop" | "max_turns" | "error" }
   | { type: "error"; message: string };
+
+/** A single conversational turn for follow-up support. Lossy: tool calls are dropped. */
+export type ConvTurn = { role: "user" | "assistant"; text: string };
 
 export type ToolContext = {
   workspaceId: string;
@@ -45,10 +49,31 @@ export type AgentRunOptions = {
   question: string;
   model: string; // e.g. "claude:claude-sonnet-4-6" or "gemini:gemini-2.5-flash"
   workspace: { id: string; schemaName: string };
+  /** Prior conversation turns (text-only — tool calls from earlier turns are dropped). */
+  history?: ConvTurn[];
   /** Optional extra text appended to the system prompt (e.g. metric glossary). */
   extraSystem?: string;
   signal?: AbortSignal;
 };
+
+/**
+ * Rough USD cost estimate per million tokens. Lookup by model id substring.
+ * Used for the in-trace cost summary — accuracy is approximate.
+ */
+const PRICING: { match: RegExp; inputPerM: number; outputPerM: number }[] = [
+  { match: /opus/i, inputPerM: 15, outputPerM: 75 },
+  { match: /sonnet/i, inputPerM: 3, outputPerM: 15 },
+  { match: /haiku/i, inputPerM: 0.8, outputPerM: 4 },
+  { match: /gemini.*2\.5.*pro/i, inputPerM: 1.25, outputPerM: 5 },
+  { match: /gemini.*2\.5.*flash/i, inputPerM: 0.075, outputPerM: 0.3 },
+  { match: /gemini/i, inputPerM: 0.1, outputPerM: 0.4 },
+];
+
+export function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
+  const p = PRICING.find((p) => p.match.test(model));
+  if (!p) return 0;
+  return (inputTokens / 1_000_000) * p.inputPerM + (outputTokens / 1_000_000) * p.outputPerM;
+}
 
 /** Build the full system prompt for a run, optionally with appended context. */
 export function buildSystemPrompt(extra?: string): string {

@@ -1,83 +1,102 @@
 import { cookies } from "next/headers";
 import { sql } from "drizzle-orm";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "./db";
-import { workspaces } from "./schema";
+import { workspaces, workspaceMembers } from "./schema";
 import { auth } from "./auth";
 
-const COOKIE_NAME = "dda_ws";
+const ANON_COOKIE = "dda_ws"; // anonymous-fallback workspace id
+const ACTIVE_COOKIE = "dda_active_ws"; // signed-in user's currently selected workspace
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 
 export type Workspace = typeof workspaces.$inferSelect;
+export type Role = "owner" | "editor" | "viewer";
+
+const ROLE_RANK: Record<Role, number> = { viewer: 0, editor: 1, owner: 2 };
 
 /**
- * Resolve the current workspace, creating one if needed.
+ * Resolve the workspace this request should operate against.
  *
- * Resolution order:
- *   1. If signed in, return the user's first workspace (creating it if missing).
- *   2. Otherwise, look up the anonymous workspace from the `dda_ws` cookie.
- *   3. Otherwise, create a brand new anonymous workspace and set the cookie.
+ * Resolution order for SIGNED-IN users:
+ *   1. dda_active_ws cookie → workspace they're a member of
+ *   2. Anonymous workspace from dda_ws cookie → claim it (set userId + add owner member row)
+ *   3. First workspace they're a member of
+ *   4. Brand-new workspace (created here, they become the owner)
  *
- * Each workspace gets its own Postgres schema (`ws_<short-id>`) which is
- * lazily created on first call.
+ * For ANONYMOUS users:
+ *   1. dda_ws cookie → return that workspace if it still exists
+ *   2. Otherwise create a new anonymous workspace + set the cookie
  *
- * MUST be called from a route handler or server action — not from a
- * pure server component — because it may need to set a cookie.
+ * Replaces the older getOrCreateWorkspace which only knew about a single
+ * workspace per user.
  */
-export async function getOrCreateWorkspace(): Promise<Workspace> {
+export async function getActiveWorkspace(): Promise<Workspace> {
   const session = await auth();
   const userId = (session?.user as any)?.id as string | undefined;
   const jar = await cookies();
-  const cookieVal = jar.get(COOKIE_NAME)?.value;
+  const cookieAnon = jar.get(ANON_COOKIE)?.value;
+  const cookieActive = jar.get(ACTIVE_COOKIE)?.value;
 
   if (userId) {
-    // First: try to claim the cookie's anonymous workspace if there is one.
-    // This carries any data the user uploaded pre-signin into their account.
-    if (cookieVal) {
-      const [cookieWs] = await db
+    // 1. Active workspace cookie wins, if the user is actually a member.
+    if (cookieActive) {
+      const rows = await db
+        .select({ ws: workspaces })
+        .from(workspaceMembers)
+        .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
+        .where(
+          and(eq(workspaceMembers.userId, userId), eq(workspaces.id, cookieActive))
+        )
+        .limit(1);
+      if (rows[0]) return rows[0].ws;
+    }
+
+    // 2. Try to claim the anonymous-cookie workspace if it exists and is unowned.
+    if (cookieAnon) {
+      const [anonWs] = await db
         .select()
         .from(workspaces)
-        .where(eq(workspaces.id, cookieVal))
+        .where(eq(workspaces.id, cookieAnon))
         .limit(1);
-      if (cookieWs) {
-        if (cookieWs.userId == null) {
-          await db
-            .update(workspaces)
-            .set({ userId })
-            .where(eq(workspaces.id, cookieWs.id));
-          return { ...cookieWs, userId };
-        }
-        if (cookieWs.userId === userId) {
-          return cookieWs;
-        }
-        // Cookie points at someone else's workspace — ignore it.
+      if (anonWs && anonWs.userId == null) {
+        await db.transaction(async (tx) => {
+          await tx.update(workspaces).set({ userId }).where(eq(workspaces.id, anonWs.id));
+          await tx
+            .insert(workspaceMembers)
+            .values({ workspaceId: anonWs.id, userId, role: "owner" })
+            .onConflictDoNothing();
+        });
+        // Forget the anon cookie now that the workspace is claimed.
+        jar.delete(ANON_COOKIE);
+        return { ...anonWs, userId };
       }
     }
 
-    // Otherwise: return the user's first workspace, creating one if needed.
-    const existing = await db
-      .select()
-      .from(workspaces)
-      .where(eq(workspaces.userId, userId))
+    // 3. First workspace the user is a member of.
+    const memberRows = await db
+      .select({ ws: workspaces })
+      .from(workspaceMembers)
+      .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
+      .where(eq(workspaceMembers.userId, userId))
       .limit(1);
-    if (existing[0]) return existing[0];
+    if (memberRows[0]) return memberRows[0].ws;
 
-    return await createWorkspace(userId);
+    // 4. Create one — they're the owner.
+    return await createWorkspaceForUser(userId, "Default");
   }
 
-  // Anonymous → look up by cookie, or create + set cookie.
-  if (cookieVal) {
-    const existing = await db
+  // ---- Anonymous flow ----
+  if (cookieAnon) {
+    const [existing] = await db
       .select()
       .from(workspaces)
-      .where(eq(workspaces.id, cookieVal))
+      .where(eq(workspaces.id, cookieAnon))
       .limit(1);
-    if (existing[0]) return existing[0];
-    // Cookie pointed at a workspace that no longer exists — fall through.
+    if (existing) return existing;
   }
 
-  const ws = await createWorkspace(null);
-  jar.set(COOKIE_NAME, ws.id, {
+  const ws = await createAnonymousWorkspace();
+  jar.set(ANON_COOKIE, ws.id, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -87,51 +106,100 @@ export async function getOrCreateWorkspace(): Promise<Workspace> {
   return ws;
 }
 
+/** Backwards-compat alias for the older name. */
+export const getOrCreateWorkspace = getActiveWorkspace;
+
 /**
- * Read-only variant for server components. Returns null if no workspace
- * exists yet — does NOT create one (cannot set cookies from RSC).
+ * Throw if the current user isn't a member of the given workspace with at
+ * least `minRole`. Returns the user's role for further fine-grained checks.
+ *
+ * Anonymous users implicitly pass for the workspace stored in their
+ * dda_ws cookie (everything in there is theirs).
  */
-export async function getCurrentWorkspace(): Promise<Workspace | null> {
+export async function requireWorkspaceMember(
+  workspaceId: string,
+  minRole: Role = "viewer"
+): Promise<Role> {
   const session = await auth();
   const userId = (session?.user as any)?.id as string | undefined;
 
-  if (userId) {
-    const existing = await db
-      .select()
-      .from(workspaces)
-      .where(eq(workspaces.userId, userId))
-      .limit(1);
-    return existing[0] ?? null;
+  if (!userId) {
+    const jar = await cookies();
+    const cookieAnon = jar.get(ANON_COOKIE)?.value;
+    if (cookieAnon === workspaceId) return "owner";
+    throw new ForbiddenError("Not a member of this workspace");
   }
 
-  const jar = await cookies();
-  const cookieVal = jar.get(COOKIE_NAME)?.value;
-  if (!cookieVal) return null;
-
-  const existing = await db
-    .select()
-    .from(workspaces)
-    .where(eq(workspaces.id, cookieVal))
+  const [row] = await db
+    .select({ role: workspaceMembers.role })
+    .from(workspaceMembers)
+    .where(
+      and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId))
+    )
     .limit(1);
-  return existing[0] ?? null;
+  if (!row) throw new ForbiddenError("Not a member of this workspace");
+
+  const role = row.role as Role;
+  if (ROLE_RANK[role] < ROLE_RANK[minRole]) {
+    throw new ForbiddenError(`Requires ${minRole} role (you are ${role})`);
+  }
+  return role;
 }
 
-/** Insert a new workspace row AND create its dedicated Postgres schema. */
-async function createWorkspace(userId: string | null): Promise<Workspace> {
-  // Generate a schema name we control end-to-end. Format: ws_<12 hex chars>.
-  // The leading `ws_` ensures it never collides with reserved or auth tables.
-  const shortId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
-  const schemaName = `ws_${shortId}`;
+/** Distinguish 403 from generic 500s in route handlers. */
+export class ForbiddenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
 
-  // CREATE SCHEMA first — if it fails, we don't want a dangling row.
-  // schemaName is generated above from a UUID hex and a fixed prefix, so
-  // it is guaranteed to match /^ws_[a-f0-9]{12}$/ and is safe to interpolate.
+/** Switch the active workspace cookie. Caller must have already verified membership. */
+export async function setActiveWorkspaceCookie(workspaceId: string) {
+  const jar = await cookies();
+  jar.set(ACTIVE_COOKIE, workspaceId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: COOKIE_MAX_AGE,
+  });
+}
+
+/**
+ * Create a new owned-by-user workspace + matching schema + owner member row.
+ * Used for the "create workspace" API and the lazy-create branch above.
+ */
+export async function createWorkspaceForUser(
+  userId: string,
+  name: string
+): Promise<Workspace> {
+  const schemaName = makeSchemaName();
   await db.execute(sql.raw(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`));
+  return await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(workspaces)
+      .values({ userId, schemaName, name })
+      .returning();
+    await tx
+      .insert(workspaceMembers)
+      .values({ workspaceId: row.id, userId, role: "owner" });
+    return row;
+  });
+}
 
+/** Anonymous workspace — no userId, no member row. */
+async function createAnonymousWorkspace(): Promise<Workspace> {
+  const schemaName = makeSchemaName();
+  await db.execute(sql.raw(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`));
   const [row] = await db
     .insert(workspaces)
-    .values({ userId, schemaName, name: "Default" })
+    .values({ userId: null, schemaName, name: "Default" })
     .returning();
   return row;
 }
 
+function makeSchemaName(): string {
+  const shortId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  return `ws_${shortId}`;
+}

@@ -69,9 +69,10 @@ export const verificationTokens = pgTable(
 
 // A "workspace" is a container for everything someone uploads/saves.
 // Anonymous workspaces have userId = null and are tracked via cookie.
-// When a user signs in, their anonymous workspace can be claimed.
-// Each workspace gets a dedicated Postgres schema (ws_<short-id>) where
-// uploaded datasets become real tables.
+// Multi-user workspaces have membership tracked in workspace_members
+// (Phase 9). The legacy userId column is still set for the *original*
+// owner so anonymous-claim flows keep working — but membership is the
+// source of truth for access control.
 export const workspaces = pgTable("workspaces", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
@@ -79,6 +80,49 @@ export const workspaces = pgTable("workspaces", {
   name: text("name").notNull().default("Default"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Phase 9 membership table — one row per (workspace, user) pair.
+// Roles: 'owner' (full control + manage members), 'editor' (read+write
+// data and analyses), 'viewer' (read-only).
+export const workspaceMembers = pgTable(
+  "workspace_members",
+  {
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("editor"), // owner | editor | viewer
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.workspaceId, t.userId] }),
+    userIdx: index("workspace_members_user_idx").on(t.userId),
+  })
+);
+
+// Token-based workspace invites — owners create them, anyone with the
+// link can accept while signed in. Optional email locks acceptance to
+// that account.
+export const workspaceInvites = pgTable(
+  "workspace_invites",
+  {
+    token: text("token").primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("editor"),
+    email: text("email"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    acceptedAt: timestamp("accepted_at"),
+    acceptedBy: text("accepted_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => ({ workspaceIdx: index("workspace_invites_workspace_idx").on(t.workspaceId) })
+);
 
 // One row per uploaded dataset. The actual rows live in a real Postgres
 // table named `<workspace.schemaName>.<tableName>` — this row is just

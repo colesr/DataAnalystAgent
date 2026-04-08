@@ -38,6 +38,25 @@ async function sendAlertEmail(opts: {
   }
 }
 
+async function sendSlackAlert(opts: {
+  webhookUrl: string;
+  alertName: string;
+  rowCount: number;
+  threshold: number;
+}) {
+  try {
+    await fetch(opts.webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: `:warning: *${opts.alertName}* triggered — ${opts.rowCount} rows > ${opts.threshold} threshold`,
+      }),
+    });
+  } catch (e) {
+    console.error("[alert] slack post failed:", e);
+  }
+}
+
 /**
  * POST /api/alerts/check
  *
@@ -101,6 +120,14 @@ export async function POST(req: Request) {
             rowCount,
             threshold,
             workspaceId: ws.id,
+          });
+        }
+        if (a.notifySlack) {
+          await sendSlackAlert({
+            webhookUrl: a.notifySlack,
+            alertName: a.name,
+            rowCount,
+            threshold,
           });
         }
       }

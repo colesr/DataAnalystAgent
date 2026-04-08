@@ -1,0 +1,35 @@
+name: Daily Postgres backup
+
+# Runs once a day at 03:17 UTC and on demand.
+# Required repo secret: DATABASE_URL (the same URL the app uses).
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run dump
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node nextjs/scripts/backup.mjs
+
+      - name: Upload backup as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-backup-${{ github.run_id }}
+          path: nextjs/backups/
+          retention-days: 30

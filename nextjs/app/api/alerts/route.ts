@@ -19,6 +19,7 @@ export async function POST(req: Request) {
     threshold?: string;
     enabled?: boolean;
     notifyEmail?: string;
+    notifySlack?: string;
   };
   try {
     body = await req.json();
@@ -29,6 +30,7 @@ export async function POST(req: Request) {
   const sql = (body.sql ?? "").trim();
   const threshold = (body.threshold ?? "0").toString().trim();
   const notifyEmail = (body.notifyEmail ?? "").trim() || null;
+  const notifySlack = (body.notifySlack ?? "").trim() || null;
   if (!name) return NextResponse.json({ error: "Missing name" }, { status: 400 });
   if (!sql) return NextResponse.json({ error: "Missing sql" }, { status: 400 });
   if (!/^\d+$/.test(threshold)) {
@@ -39,6 +41,9 @@ export async function POST(req: Request) {
   }
   if (notifyEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(notifyEmail)) {
     return NextResponse.json({ error: "Invalid notifyEmail" }, { status: 400 });
+  }
+  if (notifySlack && !/^https:\/\/hooks\.slack\.com\//.test(notifySlack)) {
+    return NextResponse.json({ error: "notifySlack must be a Slack webhook URL" }, { status: 400 });
   }
 
   const ws = await getOrCreateWorkspace();
@@ -51,6 +56,7 @@ export async function POST(req: Request) {
       threshold,
       enabled: body.enabled ?? true,
       notifyEmail,
+      notifySlack,
     })
     .returning();
   return NextResponse.json(row);

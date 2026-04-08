@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AuthMenu } from "./_components/AuthMenu";
+import { CleanPanel } from "./_components/CleanPanel";
 import { DashboardPanel } from "./_components/DashboardPanel";
+import { PivotPanel } from "./_components/PivotPanel";
 import { RealChart } from "./_components/RealChart";
 import { SchemaProfile } from "./_components/SchemaProfile";
 import { ToolsPanel } from "./_components/ToolsPanel";
+import { ToolsPanelExtra } from "./_components/ToolsPanelExtra";
 
 type DatasetMeta = {
   id: string;
@@ -1059,6 +1062,7 @@ export default function Page() {
         {/* ============ TOOLS ============ */}
         <section className="tab-panel" hidden={tab !== "tools"}>
           <ToolsPanel datasets={datasets} />
+          <ToolsPanelExtra datasets={datasets} />
         </section>
 
         {/* ============ DASHBOARD ============ */}
@@ -1068,61 +1072,12 @@ export default function Page() {
 
         {/* ============ CLEAN ============ */}
         <section className="tab-panel" hidden={tab !== "clean"}>
-          <div className="card">
-            <h3>Clean & Transform</h3>
-            <div className="muted" style={{ marginBottom: 10 }}>
-              Operations apply immediately. Re-uploading resets.
-            </div>
-            <select style={{ marginBottom: 12 }} />
-            <div className="muted">No tables loaded.</div>
-            <div style={{ marginTop: 12, display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button className="ghost" onClick={noop}>Remove duplicate rows</button>
-              <button className="ghost" onClick={noop}>Add calculated column</button>
-              <button className="ghost" onClick={noop}>Auto-parse dates</button>
-              <button className="ghost danger" onClick={noop}>Drop table</button>
-            </div>
-          </div>
+          <CleanPanel datasets={datasets} onChanged={fetchDatasets} toast={toast} />
         </section>
 
         {/* ============ PIVOT ============ */}
         <section className="tab-panel" hidden={tab !== "pivot"}>
-          <div className="card">
-            <h3>Pivot Table Builder</h3>
-            <Row>
-              <Field label="Table"><select /></Field>
-              <Field label="Rows"><select /></Field>
-              <Field label="Columns (optional)"><select /></Field>
-              <Field label="Values"><select /></Field>
-              <Field label="Aggregate">
-                <select>
-                  <option>SUM</option>
-                  <option>AVG</option>
-                  <option>COUNT</option>
-                  <option>MIN</option>
-                  <option>MAX</option>
-                </select>
-              </Field>
-            </Row>
-            <button className="primary" onClick={noop}>Build pivot</button>
-            <label
-              style={{
-                fontSize: 11,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                marginLeft: 10,
-                color: "var(--muted)",
-              }}
-            >
-              <input
-                type="checkbox"
-                defaultChecked
-                style={{ width: "auto", margin: 0 }}
-              />{" "}
-              heatmap cells
-            </label>
-            <div className="tool-result" />
-          </div>
+          <PivotPanel datasets={datasets} />
         </section>
 
         {/* ============ SQL ============ */}
@@ -1513,23 +1468,6 @@ function AlertsCard({
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Row({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="row" style={{ marginTop: 8 }}>
-      {children}
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="lbl">{label}</label>
-      {children}
     </div>
   );
 }

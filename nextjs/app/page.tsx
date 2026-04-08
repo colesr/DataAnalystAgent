@@ -295,6 +295,63 @@ export default function Page() {
     [fetchDatasets, selectedDsId, toast]
   );
 
+  const importFromUrl = useCallback(async () => {
+    const url = window.prompt("CSV/XLSX URL:");
+    if (!url) return;
+    try {
+      const res = await fetch("/api/datasets/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      toast("success", `Imported ${data.tableName} (${data.rowCount} rows)`);
+      await fetchDatasets();
+    } catch (e: any) {
+      toast("err", `Import failed: ${e?.message ?? e}`);
+    }
+  }, [fetchDatasets, toast]);
+
+  const importFromGSheet = useCallback(async () => {
+    const url = window.prompt("Google Sheets URL (must be 'anyone with the link can view'):");
+    if (!url) return;
+    try {
+      const res = await fetch("/api/datasets/import-gsheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      toast("success", `Imported ${data.tableName} (${data.rowCount} rows)`);
+      await fetchDatasets();
+    } catch (e: any) {
+      toast("err", `Import failed: ${e?.message ?? e}`);
+    }
+  }, [fetchDatasets, toast]);
+
+  const importFromPostgres = useCallback(async () => {
+    const dsn = window.prompt("Postgres DSN (postgres://user:pass@host:port/db):");
+    if (!dsn) return;
+    const query = window.prompt("SELECT query:");
+    if (!query) return;
+    const name = window.prompt("Name for the imported table (optional):", "imported");
+    try {
+      const res = await fetch("/api/datasets/import-postgres", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dsn, query, name: name || undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      toast("success", `Imported ${data.tableName} (${data.rowCount} rows)`);
+      await fetchDatasets();
+    } catch (e: any) {
+      toast("err", `Import failed: ${e?.message ?? e}`);
+    }
+  }, [fetchDatasets, toast]);
+
   const loadDemoData = useCallback(async () => {
     try {
       const res = await fetch("/api/datasets/seed", { method: "POST" });
@@ -745,6 +802,15 @@ export default function Page() {
             <span className="right">
               <button className="ghost tiny" onClick={loadDemoData}>
                 Load demo data
+              </button>
+              <button className="ghost tiny" onClick={importFromUrl}>
+                Import URL
+              </button>
+              <button className="ghost tiny" onClick={importFromGSheet}>
+                Import Sheet
+              </button>
+              <button className="ghost tiny" onClick={importFromPostgres}>
+                Import Postgres
               </button>
               <button className="ghost tiny danger" onClick={clearAllDatasets} disabled={!datasets.length}>
                 Clear

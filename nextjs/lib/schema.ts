@@ -67,21 +67,22 @@ export const verificationTokens = pgTable(
 // DOMAIN TABLES
 // ======================================================================
 
-// A "workspace" is a per-user container for everything they upload/save.
-// One user → one workspace for now (multi-workspace can come later).
+// A "workspace" is a container for everything someone uploads/saves.
+// Anonymous workspaces have userId = null and are tracked via cookie.
+// When a user signs in, their anonymous workspace can be claimed.
+// Each workspace gets a dedicated Postgres schema (ws_<short-id>) where
+// uploaded datasets become real tables.
 export const workspaces = pgTable("workspaces", {
   id: uuid("id").defaultRandom().primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  schemaName: text("schema_name").notNull().unique(),
   name: text("name").notNull().default("Default"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// User-uploaded data tables. Each row in `dataset` represents one logical
-// table the user has loaded. Actual rows live in `dataset_rows` (jsonb)
-// for now — Phase 2 will replace this with real per-workspace Postgres
-// schemas using DuckDB or schema-per-tenant.
+// One row per uploaded dataset. The actual rows live in a real Postgres
+// table named `<workspace.schemaName>.<tableName>` — this row is just
+// metadata that links the user-facing name to the physical table.
 export const datasets = pgTable(
   "datasets",
   {
@@ -90,24 +91,13 @@ export const datasets = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    tableName: text("table_name").notNull(),
     sourceFile: text("source_file"),
     columns: jsonb("columns").$type<{ name: string; type: string }[]>().notNull(),
     rowCount: integer("row_count").notNull().default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => ({ workspaceIdx: index("datasets_workspace_idx").on(t.workspaceId) })
-);
-
-export const datasetRows = pgTable(
-  "dataset_rows",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    datasetId: uuid("dataset_id")
-      .notNull()
-      .references(() => datasets.id, { onDelete: "cascade" }),
-    row: jsonb("row").notNull(),
-  },
-  (t) => ({ datasetIdx: index("dataset_rows_dataset_idx").on(t.datasetId) })
 );
 
 // Saved analyses — name + question + report JSON, can be re-run

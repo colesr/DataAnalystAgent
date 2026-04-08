@@ -1,6 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+type DatasetMeta = {
+  id: string;
+  name: string;
+  tableName: string;
+  sourceFile: string | null;
+  columns: { name: string; type: string }[];
+  rowCount: number;
+  createdAt: string;
+};
+
+type RowsResponse = {
+  columns: { name: string; type: string }[];
+  rows: Record<string, unknown>[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+type SqlResponse = {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+  truncated: boolean;
+  durationMs: number;
+};
+
+type Toast = { id: number; kind: "info" | "success" | "err"; text: string };
 
 type TabId =
   | "ask"
@@ -57,9 +85,207 @@ export default function Page() {
   const [activeCat, setActiveCat] = useState<Cat>("all");
   const [botOpen, setBotOpen] = useState(false);
 
+  // Datasets / data plane
+  const [datasets, setDatasets] = useState<DatasetMeta[]>([]);
+  const [selectedDsId, setSelectedDsId] = useState<string | null>(null);
+  const [rowsData, setRowsData] = useState<RowsResponse | null>(null);
+  const [rowsLoading, setRowsLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [pageSize] = useState(50);
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [filter, setFilter] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // SQL editor
+  const [sqlText, setSqlText] = useState("");
+  const [sqlResult, setSqlResult] = useState<SqlResponse | null>(null);
+  const [sqlError, setSqlError] = useState<string | null>(null);
+  const [sqlRunning, setSqlRunning] = useState(false);
+
+  // Toasts
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastIdRef = useRef(0);
+  const toast = useCallback((kind: Toast["kind"], text: string) => {
+    const id = ++toastIdRef.current;
+    setToasts((ts) => [...ts, { id, kind, text }]);
+    setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), 3200);
+  }, []);
+
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
+
+  // ---- API helpers ----
+  const fetchDatasets = useCallback(async () => {
+    try {
+      const res = await fetch("/api/datasets", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: { datasets: DatasetMeta[] } = await res.json();
+      setDatasets(data.datasets);
+      // If the currently selected dataset disappeared, deselect it.
+      if (selectedDsId && !data.datasets.find((d) => d.id === selectedDsId)) {
+        setSelectedDsId(null);
+        setRowsData(null);
+      }
+    } catch (e: any) {
+      toast("err", `Failed to load datasets: ${e?.message ?? e}`);
+    }
+  }, [selectedDsId, toast]);
+
+  useEffect(() => {
+    fetchDatasets();
+  }, [fetchDatasets]);
+
+  const fetchRows = useCallback(
+    async (id: string, pageArg: number, sortArg: string | null, dirArg: "asc" | "desc", q: string) => {
+      setRowsLoading(true);
+      try {
+        const url = new URL(`/api/datasets/${id}/rows`, window.location.origin);
+        url.searchParams.set("page", String(pageArg));
+        url.searchParams.set("pageSize", String(pageSize));
+        if (sortArg) {
+          url.searchParams.set("sort", sortArg);
+          url.searchParams.set("dir", dirArg);
+        }
+        if (q) url.searchParams.set("q", q);
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j.error ?? `HTTP ${res.status}`);
+        }
+        const data: RowsResponse = await res.json();
+        setRowsData(data);
+      } catch (e: any) {
+        toast("err", `Failed to load rows: ${e?.message ?? e}`);
+        setRowsData(null);
+      } finally {
+        setRowsLoading(false);
+      }
+    },
+    [pageSize, toast]
+  );
+
+  // Re-fetch rows whenever the selected dataset / page / sort / filter changes.
+  useEffect(() => {
+    if (!selectedDsId) return;
+    fetchRows(selectedDsId, page, sortCol, sortDir, filter);
+  }, [selectedDsId, page, sortCol, sortDir, filter, fetchRows]);
+
+  const onSelectDataset = useCallback((id: string) => {
+    setSelectedDsId(id);
+    setPage(0);
+    setSortCol(null);
+    setFilter("");
+    setRowsData(null);
+  }, []);
+
+  const onSortColumn = useCallback(
+    (col: string) => {
+      if (sortCol === col) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      } else {
+        setSortCol(col);
+        setSortDir("asc");
+      }
+      setPage(0);
+    },
+    [sortCol]
+  );
+
+  const uploadFiles = useCallback(
+    async (files: FileList | File[]) => {
+      setUploading(true);
+      try {
+        for (const f of Array.from(files)) {
+          const fd = new FormData();
+          fd.append("file", f);
+          const res = await fetch("/api/datasets/upload", { method: "POST", body: fd });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            toast("err", `${f.name}: ${data.error ?? `HTTP ${res.status}`}`);
+            continue;
+          }
+          toast("success", `Loaded ${f.name} → ${data.tableName} (${data.rowCount} rows)`);
+        }
+        await fetchDatasets();
+      } finally {
+        setUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    },
+    [fetchDatasets, toast]
+  );
+
+  const deleteDataset = useCallback(
+    async (id: string, name: string) => {
+      if (!confirm(`Delete dataset "${name}"? This drops the underlying table.`)) return;
+      try {
+        const res = await fetch(`/api/datasets/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j.error ?? `HTTP ${res.status}`);
+        }
+        toast("success", `Deleted ${name}`);
+        if (selectedDsId === id) {
+          setSelectedDsId(null);
+          setRowsData(null);
+        }
+        await fetchDatasets();
+      } catch (e: any) {
+        toast("err", `Delete failed: ${e?.message ?? e}`);
+      }
+    },
+    [fetchDatasets, selectedDsId, toast]
+  );
+
+  const clearAllDatasets = useCallback(async () => {
+    if (datasets.length === 0) return;
+    if (!confirm(`Delete all ${datasets.length} datasets? This drops their tables.`)) return;
+    try {
+      for (const d of datasets) {
+        await fetch(`/api/datasets/${d.id}`, { method: "DELETE" });
+      }
+      setSelectedDsId(null);
+      setRowsData(null);
+      await fetchDatasets();
+      toast("success", "All datasets cleared");
+    } catch (e: any) {
+      toast("err", `Clear failed: ${e?.message ?? e}`);
+    }
+  }, [datasets, fetchDatasets, toast]);
+
+  const runSql = useCallback(async () => {
+    if (!sqlText.trim()) return;
+    setSqlRunning(true);
+    setSqlError(null);
+    try {
+      const res = await fetch("/api/sql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sql: sqlText, source: "editor" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSqlError(data.error ?? `HTTP ${res.status}`);
+        setSqlResult(null);
+        return;
+      }
+      setSqlResult(data);
+      toast(
+        "success",
+        `${data.rowCount} row${data.rowCount === 1 ? "" : "s"} in ${data.durationMs}ms${
+          data.truncated ? " (truncated)" : ""
+        }`
+      );
+    } catch (e: any) {
+      setSqlError(e?.message ?? String(e));
+      setSqlResult(null);
+    } finally {
+      setSqlRunning(false);
+    }
+  }, [sqlText, toast]);
 
   const noop = () => {};
 
@@ -115,23 +341,35 @@ export default function Page() {
           <h3>
             Data
             <span className="right">
-              <button className="ghost tiny" onClick={noop}>
-                Reset to demo
-              </button>
-              <button className="ghost tiny danger" onClick={noop}>
+              <button className="ghost tiny danger" onClick={clearAllDatasets} disabled={!datasets.length}>
                 Clear
               </button>
             </span>
           </h3>
           <label className="upload-zone">
-            Drop a CSV / Excel file or click to browse
+            {uploading ? "Uploading…" : "Drop a CSV / Excel file or click to browse"}
             <div className="muted" style={{ marginTop: 4 }}>
               Files append as new tables — load several to join across them
             </div>
-            <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx" multiple onChange={noop} />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.tsv,.txt,.xls,.xlsx"
+              multiple
+              disabled={uploading}
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  uploadFiles(e.target.files);
+                }
+              }}
+            />
           </label>
           <div className="muted" style={{ marginTop: 8 }}>
-            (no files loaded)
+            {datasets.length === 0
+              ? "(no files loaded)"
+              : `${datasets.length} table${datasets.length === 1 ? "" : "s"} · ${datasets
+                  .reduce((a, d) => a + d.rowCount, 0)
+                  .toLocaleString()} rows total`}
           </div>
         </div>
 
@@ -171,33 +409,120 @@ export default function Page() {
         <section className="tab-panel" hidden={tab !== "data"}>
           <div className="card">
             <h3>
-              Datasets <span className="badge">0 tables</span>
+              Datasets{" "}
+              <span className="badge">
+                {datasets.length} table{datasets.length === 1 ? "" : "s"}
+              </span>
             </h3>
             <div className="muted" style={{ marginBottom: 8 }}>
               Pick a table to browse its rows. Click column headers to sort.
             </div>
             <div className="db-layout">
               <div className="db-tables">
-                <div className="muted">No datasets loaded. Drop a CSV/Excel file at the top.</div>
+                {datasets.length === 0 ? (
+                  <div className="muted">
+                    No datasets loaded. Drop a CSV/Excel file at the top.
+                  </div>
+                ) : (
+                  datasets.map((d) => (
+                    <button
+                      key={d.id}
+                      className={`db-tbl-item ${selectedDsId === d.id ? "active" : ""}`}
+                      onClick={() => onSelectDataset(d.id)}
+                    >
+                      <div className="db-tbl-name">{d.name}</div>
+                      <div className="db-tbl-meta">
+                        {d.rowCount.toLocaleString()} rows · {d.columns.length} cols
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
               <div className="db-main">
                 <div className="db-toolbar">
-                  <input type="search" placeholder="Filter rows…" disabled />
-                  <span className="db-info" />
+                  <input
+                    type="search"
+                    placeholder="Filter rows…"
+                    disabled={!selectedDsId}
+                    value={filter}
+                    onChange={(e) => {
+                      setFilter(e.target.value);
+                      setPage(0);
+                    }}
+                  />
+                  <span className="db-info">
+                    {rowsData
+                      ? `${rowsData.total.toLocaleString()} row${
+                          rowsData.total === 1 ? "" : "s"
+                        } · page ${page + 1}/${Math.max(1, Math.ceil(rowsData.total / pageSize))}`
+                      : ""}
+                  </span>
                   <span className="db-pager">
-                    <button className="ghost" disabled>
+                    <button
+                      className="ghost"
+                      disabled={!rowsData || page === 0}
+                      onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    >
                       ‹ Prev
                     </button>
-                    <button className="ghost" disabled>
+                    <button
+                      className="ghost"
+                      disabled={
+                        !rowsData || (page + 1) * pageSize >= (rowsData?.total ?? 0)
+                      }
+                      onClick={() => setPage((p) => p + 1)}
+                    >
                       Next ›
                     </button>
-                    <button className="ghost" disabled title="Download current table as CSV">
-                      Export CSV
-                    </button>
+                    {selectedDsId && (
+                      <button
+                        className="ghost danger"
+                        onClick={() => {
+                          const ds = datasets.find((d) => d.id === selectedDsId);
+                          if (ds) deleteDataset(ds.id, ds.name);
+                        }}
+                      >
+                        Drop
+                      </button>
+                    )}
                   </span>
                 </div>
-                <div className="db-grid">
-                  <div className="muted">Select a dataset on the left.</div>
+                <div className="db-scroll">
+                  {!selectedDsId ? (
+                    <div className="muted" style={{ padding: 16 }}>
+                      Select a dataset on the left.
+                    </div>
+                  ) : rowsLoading ? (
+                    <div className="muted" style={{ padding: 16 }}>
+                      Loading…
+                    </div>
+                  ) : !rowsData || rowsData.rows.length === 0 ? (
+                    <div className="muted" style={{ padding: 16 }}>
+                      No rows.
+                    </div>
+                  ) : (
+                    <table className="db-table">
+                      <thead>
+                        <tr>
+                          {rowsData.columns.map((c) => (
+                            <th key={c.name} onClick={() => onSortColumn(c.name)}>
+                              {c.name}
+                              {sortCol === c.name && (sortDir === "asc" ? " ↑" : " ↓")}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rowsData.rows.map((r, i) => (
+                          <tr key={i}>
+                            {rowsData.columns.map((c) => (
+                              <td key={c.name}>{formatCell(r[c.name])}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
             </div>
@@ -723,23 +1048,108 @@ export default function Page() {
             <h3>
               SQL Editor
               <span className="right">
-                <button className="ghost tiny" onClick={noop}>Export CSV</button>
+                <span className="muted">
+                  {datasets.length === 0
+                    ? "no tables yet"
+                    : `${datasets.length} table${datasets.length === 1 ? "" : "s"} available`}
+                </span>
               </span>
             </h3>
-            <textarea className="code" placeholder="SELECT * FROM ... LIMIT 50;" />
-            <button className="primary" onClick={noop}>Run query</button>
-            <button className="ghost" style={{ marginLeft: 6 }} onClick={noop}>
-              Explain plan
+            <textarea
+              className="code"
+              placeholder={
+                datasets[0]
+                  ? `SELECT * FROM ${datasets[0].tableName} LIMIT 50;`
+                  : "SELECT * FROM ... LIMIT 50;"
+              }
+              value={sqlText}
+              onChange={(e) => setSqlText(e.target.value)}
+              rows={6}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  runSql();
+                }
+              }}
+            />
+            <button className="primary" onClick={runSql} disabled={sqlRunning || !sqlText.trim()}>
+              {sqlRunning ? "Running…" : "Run query"}
             </button>
-            <div className="tool-result" />
+            <span className="muted" style={{ marginLeft: 8 }}>
+              ⌘/Ctrl+Enter
+            </span>
+            <div className="tool-result">
+              {sqlError && (
+                <div
+                  style={{
+                    background: "var(--bg)",
+                    border: "1px solid var(--err)",
+                    borderRadius: 4,
+                    padding: 10,
+                    color: "var(--err)",
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: 11,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {sqlError}
+                </div>
+              )}
+              {sqlResult && !sqlError && (
+                <>
+                  <div className="muted" style={{ marginBottom: 6 }}>
+                    {sqlResult.rowCount} row{sqlResult.rowCount === 1 ? "" : "s"} ·{" "}
+                    {sqlResult.durationMs}ms
+                    {sqlResult.truncated && ` · truncated to ${sqlResult.rows.length}`}
+                  </div>
+                  <div className="db-scroll">
+                    {sqlResult.rows.length === 0 ? (
+                      <div className="muted" style={{ padding: 16 }}>
+                        Query returned no rows.
+                      </div>
+                    ) : (
+                      <table className="db-table">
+                        <thead>
+                          <tr>
+                            {sqlResult.columns.map((c) => (
+                              <th key={c}>{c}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sqlResult.rows.map((r, i) => (
+                            <tr key={i}>
+                              {sqlResult.columns.map((c) => (
+                                <td key={c}>{formatCell(r[c])}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
           <div className="card">
             <h3>
-              Query History <span className="badge">0</span>
+              Tables in this workspace <span className="badge">{datasets.length}</span>
             </h3>
-            <div>
-              <div className="muted">No queries yet.</div>
-            </div>
+            {datasets.length === 0 ? (
+              <div className="muted">Upload a CSV to get started.</div>
+            ) : (
+              <div>
+                {datasets.map((d) => (
+                  <div key={d.id} className="qh-row">
+                    <span className="qh-source">table</span>
+                    <span className="qh-sql">
+                      {d.tableName} ({d.columns.map((c) => `${c.name} ${c.type}`).join(", ")})
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
@@ -808,6 +1218,17 @@ export default function Page() {
         </section>
       </div>
 
+      {/* ============ TOASTS ============ */}
+      {toasts.map((t, i) => (
+        <div
+          key={t.id}
+          className={`toast ${t.kind}`}
+          style={{ top: 20 + i * 52 }}
+        >
+          {t.text}
+        </div>
+      ))}
+
       {/* ============ CHATBOT FAB + PANEL ============ */}
       <button
         className={`bot-fab ${botOpen ? "active" : ""}`}
@@ -848,6 +1269,13 @@ export default function Page() {
 /* -------------------------------------------------- */
 /* Small layout helpers                                */
 /* -------------------------------------------------- */
+
+function formatCell(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
 
 function Row({ children }: { children: React.ReactNode }) {
   return (

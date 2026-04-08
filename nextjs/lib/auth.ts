@@ -7,9 +7,7 @@ import {
   accounts,
   sessions,
   verificationTokens,
-  workspaces,
 } from "./schema";
-import { eq } from "drizzle-orm";
 
 const providers = [];
 if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
@@ -38,21 +36,5 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-  events: {
-    async createUser({ user }) {
-      // Auto-create a default workspace for every new user
-      if (user.id) {
-        await db.insert(workspaces).values({ userId: user.id, name: "Default" });
-      }
-    },
-  },
+  // Workspace creation/claiming on sign-in is handled in lib/workspace.ts
 });
-
-// Helper to get the current user's workspace (first one for now)
-export async function currentWorkspace() {
-  const session = await auth();
-  if (!session?.user) return null;
-  const userId = (session.user as any).id as string;
-  const ws = await db.select().from(workspaces).where(eq(workspaces.userId, userId)).limit(1);
-  return ws[0] ?? null;
-}

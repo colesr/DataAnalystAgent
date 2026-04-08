@@ -14,6 +14,11 @@ export async function GET() {
       AUTH_GOOGLE_SECRET: !!process.env.AUTH_GOOGLE_SECRET,
       ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
       GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+      // Raw values of every URL-shaped auth env var so we can spot a malformed one.
+      AUTH_URL_raw: process.env.AUTH_URL ?? null,
+      NEXTAUTH_URL_raw: process.env.NEXTAUTH_URL ?? null,
+      AUTH_TRUST_HOST: process.env.AUTH_TRUST_HOST ?? null,
+      RAILWAY_PUBLIC_DOMAIN: process.env.RAILWAY_PUBLIC_DOMAIN ?? null,
     },
   };
 
@@ -34,6 +39,7 @@ export async function GET() {
   } catch (e: any) {
     result.auth = "error: " + (e?.message ?? "unknown");
     if (e?.stack) result.authStack = String(e.stack).split("\n").slice(0, 3).join(" | ");
+    if (e?.input != null) result.authInput = String(e.input);
     result.status = "degraded";
   }
 

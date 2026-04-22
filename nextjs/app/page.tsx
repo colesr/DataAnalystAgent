@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuthMenu } from "./_components/AuthMenu";
 import { ChatBot } from "./_components/ChatBot";
 import { CleanPanel } from "./_components/CleanPanel";
+import { CoachButton } from "./_components/CoachButton";
+import { CommandPalette, buildCommands } from "./_components/CommandPalette";
 import { DashboardPanel } from "./_components/DashboardPanel";
 import { ImportDialog } from "./_components/ImportDialog";
 import { Markdown } from "./_components/Markdown";
@@ -13,6 +15,25 @@ import { RealChart } from "./_components/RealChart";
 import { SchemaProfile } from "./_components/SchemaProfile";
 import { ToolsPanel } from "./_components/ToolsPanel";
 import { ToolsPanelExtra } from "./_components/ToolsPanelExtra";
+import {
+  PlaceholderPanel,
+  StepHero,
+  StepNav,
+  SubTabNav,
+  findStep,
+  stepForSubtab,
+  type StepId,
+  type SubTabId,
+} from "./_components/WorkflowSteps";
+import { runClientAgent } from "./_components/client-agent";
+import { WebLLMSetup, getStoredLocalModel } from "./_components/WebLLMSetup";
+import {
+  LOCAL_MODELS,
+  hasWebGPU,
+  isLoaded as isLocalLoaded,
+  type LocalModelId,
+} from "./_components/webllm-client";
+import type { ConvTurn } from "@/lib/agent/types";
 
 type DatasetMeta = {
   id: string;
@@ -88,33 +109,15 @@ type AgentEvent =
 
 type Toast = { id: number; kind: "info" | "success" | "err"; text: string };
 
-type TabId =
-  | "ask"
-  | "data"
-  | "tools"
-  | "dashboard"
-  | "clean"
-  | "pivot"
-  | "sql"
-  | "glossary"
-  | "saved"
-  | "schema";
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: "ask", label: "Ask" },
-  { id: "data", label: "Data" },
-  { id: "tools", label: "Tools" },
-  { id: "dashboard", label: "Dashboard" },
-  { id: "clean", label: "Clean" },
-  { id: "pivot", label: "Pivot" },
-  { id: "sql", label: "SQL" },
-  { id: "glossary", label: "Glossary" },
-  { id: "saved", label: "Saved" },
-  { id: "schema", label: "Schema" },
-];
-
 export default function Page() {
-  const [tab, setTab] = useState<TabId>("ask");
+  const [subtab, setSubtab] = useState<SubTabId>("data");
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [coachOpen, setCoachOpen] = useState(false);
+  const step = useMemo(() => stepForSubtab(subtab), [subtab]);
+  const handleSelectStep = useCallback((id: StepId) => {
+    const s = findStep(id);
+    setSubtab(s.subtabs[0].id);
+  }, []);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [soundOn, setSoundOn] = useState(true);
 
@@ -138,7 +141,13 @@ export default function Page() {
   const [sqlRunning, setSqlRunning] = useState(false);
 
   // Agent / Ask
-  const [model, setModel] = useState("gemini:gemini-2.5-flash");
+  const [model, setModel] = useState<string>("local:Hermes-3-Llama-3.2-3B-q4f32_1-MLC");
+  const [localSetupOpen, setLocalSetupOpen] = useState(false);
+  const [pendingRun, setPendingRun] = useState<{ q: string; history: ConvTurn[] } | null>(null);
+  // Hydrate the model selection from localStorage on mount (avoids SSR mismatch).
+  useEffect(() => {
+    setModel(`local:${getStoredLocalModel()}`);
+  }, []);
   const [question, setQuestion] = useState("");
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([]);
@@ -343,8 +352,26 @@ export default function Page() {
     }
   }, [datasets, fetchDatasets, toast]);
 
-  const runAgent = useCallback(async (q: string, history: { role: "user" | "assistant"; text: string }[] = []) => {
+  const runAgent = useCallback(async (q: string, history: ConvTurn[] = []) => {
     if (!q.trim()) return;
+
+    // Local model path: open the setup modal if the engine isn't loaded yet,
+    // and re-trigger this run after the user clicks "Start".
+    if (model.startsWith("local:")) {
+      const modelId = model.slice("local:".length) as LocalModelId;
+      if (!hasWebGPU()) {
+        setAgentError(
+          "WebGPU is not available in this browser. Use Chrome / Edge / Brave on desktop, or switch to a cloud model."
+        );
+        return;
+      }
+      if (!isLocalLoaded(modelId)) {
+        setPendingRun({ q, history });
+        setLocalSetupOpen(true);
+        return;
+      }
+    }
+
     setAgentRunning(true);
     setAgentEvents([]);
     setAgentText("");
@@ -356,51 +383,69 @@ export default function Page() {
     agentAbortRef.current = ctrl;
 
     let collectedText = "";
-    try {
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, model, history }),
-        signal: ctrl.signal,
-      });
-      if (!res.ok || !res.body) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(txt || `HTTP ${res.status}`);
+
+    const handle = (ev: AgentEvent) => {
+      setAgentEvents((prev) => [...prev, ev]);
+      if (ev.type === "text") {
+        collectedText += ev.delta;
+        setAgentText((prev) => prev + ev.delta);
+      } else if (ev.type === "chart") {
+        setAgentCharts((prev) => [...prev, ev.spec]);
+      } else if (ev.type === "usage") {
+        setAgentUsage({
+          inputTokens: ev.inputTokens,
+          outputTokens: ev.outputTokens,
+          estCostUsd: ev.estCostUsd,
+        });
+      } else if (ev.type === "error") {
+        setAgentError(ev.message);
       }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop() ?? "";
-        for (const part of parts) {
-          if (!part.startsWith("data: ")) continue;
-          const json = part.slice(6).trim();
-          if (!json) continue;
-          let ev: AgentEvent;
-          try {
-            ev = JSON.parse(json) as AgentEvent;
-          } catch {
-            continue;
-          }
-          // Append the event so the trace UI re-renders.
-          setAgentEvents((prev) => [...prev, ev]);
-          if (ev.type === "text") {
-            collectedText += ev.delta;
-            setAgentText((prev) => prev + ev.delta);
-          } else if (ev.type === "chart") {
-            setAgentCharts((prev) => [...prev, ev.spec]);
-          } else if (ev.type === "usage") {
-            setAgentUsage({
-              inputTokens: ev.inputTokens,
-              outputTokens: ev.outputTokens,
-              estCostUsd: ev.estCostUsd,
-            });
-          } else if (ev.type === "error") {
-            setAgentError(ev.message);
+    };
+
+    try {
+      if (model.startsWith("local:")) {
+        const modelId = model.slice("local:".length) as LocalModelId;
+        // Pull glossary + memory so the in-browser agent has the same context
+        // as the server one.
+        const ctxRes = await fetch("/api/agent/context")
+          .then((r) => r.json())
+          .catch(() => ({ extraSystem: "" }));
+        for await (const ev of runClientAgent({
+          question: q,
+          modelId,
+          history,
+          extraSystem: ctxRes.extraSystem ?? "",
+          signal: ctrl.signal,
+        })) {
+          handle(ev);
+        }
+      } else {
+        const res = await fetch("/api/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: q, model, history }),
+          signal: ctrl.signal,
+        });
+        if (!res.ok || !res.body) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(txt || `HTTP ${res.status}`);
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() ?? "";
+          for (const part of parts) {
+            if (!part.startsWith("data: ")) continue;
+            const json = part.slice(6).trim();
+            if (!json) continue;
+            try {
+              handle(JSON.parse(json) as AgentEvent);
+            } catch {}
           }
         }
       }
@@ -558,7 +603,7 @@ export default function Page() {
         setAgentEvents([]);
         setAgentError(null);
         if (report.model) setModel(report.model);
-        setTab("ask");
+        setSubtab("ask");
         toast("info", `Loaded "${data.name}"`);
       } catch (e: any) {
         toast("err", `Load failed: ${e?.message ?? e}`);
@@ -696,6 +741,45 @@ export default function Page() {
     } catch {}
   }, []);
 
+  // Global ⌘K / Ctrl+K toggles the command palette.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  const newConversation = useCallback(() => {
+    setQuestion("");
+    setFollowupText("");
+    setAgentEvents([]);
+    setAgentText("");
+    setAgentCharts([]);
+    setAgentError(null);
+    setAgentUsage(null);
+    setConvHistory([]);
+    setSubtab("ask");
+  }, []);
+
+  const commands = useMemo(
+    () =>
+      buildCommands({
+        goto: setSubtab,
+        selectStep: handleSelectStep,
+        openImport: () => setImportDialogOpen(true),
+        loadDemo: loadDemoData,
+        toggleTheme: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
+        openCoach: () => setCoachOpen(true),
+        newConversation,
+        openHelp: () => setWelcomeOpen(true),
+      }),
+    [handleSelectStep, loadDemoData, newConversation]
+  );
+
   const runSql = useCallback(async () => {
     if (!sqlText.trim()) return;
     setSqlRunning(true);
@@ -755,15 +839,35 @@ export default function Page() {
 
         {/* Model card */}
         <div className="card">
-          <h3>Model</h3>
+          <h3>
+            Model
+            <span className="right">
+              {model.startsWith("local:") && (
+                <button className="ghost tiny" onClick={() => setLocalSetupOpen(true)}>
+                  Manage local…
+                </button>
+              )}
+            </span>
+          </h3>
           <select value={model} onChange={(e) => setModel(e.target.value)}>
-            <option value="gemini:gemini-2.5-flash">Gemini 2.5 Flash — free</option>
-            <option value="claude:claude-sonnet-4-6">Claude Sonnet 4.6 — balanced</option>
-            <option value="claude:claude-opus-4-6">Claude Opus 4.6 — most capable</option>
-            <option value="claude:claude-haiku-4-5-20251001">Claude Haiku 4.5 — fastest</option>
+            <optgroup label="Local — runs in your browser, no key needed">
+              {LOCAL_MODELS.map((m) => (
+                <option key={m.id} value={`local:${m.id}`}>
+                  {m.label}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Cloud — requires an API key on the server (legacy)">
+              <option value="gemini:gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="claude:claude-sonnet-4-6">Claude Sonnet 4.6</option>
+              <option value="claude:claude-opus-4-6">Claude Opus 4.6</option>
+              <option value="claude:claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+            </optgroup>
           </select>
           <div className="muted" style={{ marginTop: 6 }}>
-            Server-side keys. No BYOK in this build.
+            {model.startsWith("local:")
+              ? "Local AI runs entirely in your browser via WebGPU. First use downloads the model (~2 GB), cached forever after. No API key, no usage cost, your data never leaves this machine."
+              : "Cloud models still rely on server-side API keys. BYOK in your browser is coming in a later phase."}
           </div>
         </div>
 
@@ -810,21 +914,13 @@ export default function Page() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <nav className="tabs">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              className={tab === t.id ? "active" : ""}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
+        {/* Workflow-step nav */}
+        <StepNav currentStep={step.id} onSelect={handleSelectStep} />
+        <SubTabNav step={step} currentSubtab={subtab} onSelect={setSubtab} />
+        <StepHero step={step} onCoach={() => setCoachOpen(true)} />
 
         {/* ============ ASK ============ */}
-        <section className="tab-panel" hidden={tab !== "ask"}>
+        <section className="tab-panel" hidden={subtab !== "ask"}>
           <div className="card">
             <h3>
               Question
@@ -1033,7 +1129,7 @@ export default function Page() {
         </section>
 
         {/* ============ DATA BROWSER ============ */}
-        <section className="tab-panel" hidden={tab !== "data"}>
+        <section className="tab-panel" hidden={subtab !== "data"}>
           <div className="card">
             <h3>
               Datasets{" "}
@@ -1157,28 +1253,28 @@ export default function Page() {
         </section>
 
         {/* ============ TOOLS ============ */}
-        <section className="tab-panel" hidden={tab !== "tools"}>
+        <section className="tab-panel" hidden={subtab !== "tools"}>
           <ToolsPanel datasets={datasets} />
           <ToolsPanelExtra datasets={datasets} />
         </section>
 
         {/* ============ DASHBOARD ============ */}
-        <section className="tab-panel" hidden={tab !== "dashboard"}>
+        <section className="tab-panel" hidden={subtab !== "dashboard"}>
           <DashboardPanel toast={toast} />
         </section>
 
         {/* ============ CLEAN ============ */}
-        <section className="tab-panel" hidden={tab !== "clean"}>
+        <section className="tab-panel" hidden={subtab !== "clean"}>
           <CleanPanel datasets={datasets} onChanged={fetchDatasets} toast={toast} />
         </section>
 
         {/* ============ PIVOT ============ */}
-        <section className="tab-panel" hidden={tab !== "pivot"}>
+        <section className="tab-panel" hidden={subtab !== "pivot"}>
           <PivotPanel datasets={datasets} />
         </section>
 
         {/* ============ SQL ============ */}
-        <section className="tab-panel" hidden={tab !== "sql"}>
+        <section className="tab-panel" hidden={subtab !== "sql"}>
           <div className="card">
             <h3>
               SQL Editor
@@ -1289,7 +1385,7 @@ export default function Page() {
         </section>
 
         {/* ============ GLOSSARY ============ */}
-        <section className="tab-panel" hidden={tab !== "glossary"}>
+        <section className="tab-panel" hidden={subtab !== "glossary"}>
           <div className="card">
             <h3>Metric Glossary</h3>
             <div className="muted" style={{ marginBottom: 8 }}>
@@ -1315,7 +1411,7 @@ export default function Page() {
         </section>
 
         {/* ============ SAVED ============ */}
-        <section className="tab-panel" hidden={tab !== "saved"}>
+        <section className="tab-panel" hidden={subtab !== "saved"}>
           <div className="card">
             <h3>
               Saved Analyses <span className="badge">{savedAnalyses.length}</span>
@@ -1399,17 +1495,148 @@ export default function Page() {
             )}
           </div>
 
+        </section>
+
+        {/* ============ SCHEMA ============ */}
+        <section className="tab-panel" hidden={subtab !== "schema"}>
+          <SchemaProfile datasets={datasets} onError={(m) => toast("err", m)} />
+        </section>
+
+        {/* ============ DEFINE (placeholders) ============ */}
+        <section className="tab-panel" hidden={subtab !== "define-brief"}>
+          <PlaceholderPanel
+            title="Project brief"
+            intro="A guided wizard for capturing the business question, who's asking, and what the answer will be used for. Borrows from the standard analyst intake template."
+            bullets={[
+              "One-page brief auto-generated from a few prompts",
+              "Stakeholder + decision-maker capture",
+              "'Done looks like…' framing forced upfront",
+              "Saved with the project — coach refers back to it on every step",
+            ]}
+          />
+        </section>
+        <section className="tab-panel" hidden={subtab !== "define-questions"}>
+          <PlaceholderPanel
+            title="Stakeholder questions"
+            intro="A library of clarifying questions to ask before scoping the work. Pick the ones relevant to your situation, send the list to your stakeholder."
+            bullets={[
+              "200+ pre-written questions organized by analysis type",
+              "Auto-pruned by the brief you wrote",
+              "Exportable as a doc / email",
+            ]}
+          />
+        </section>
+        <section className="tab-panel" hidden={subtab !== "define-metrics"}>
+          <PlaceholderPanel
+            title="Success metrics library"
+            intro="Browse common success metrics by industry / function (retention, NPS, ARPU, lift, conversion, etc.) and copy the formal definitions into your glossary."
+            bullets={[
+              "Searchable metric catalog with formulas",
+              "One-click 'add to project glossary'",
+              "Recommended metrics based on your brief",
+            ]}
+          />
+        </section>
+
+        {/* ============ MODEL (placeholders) ============ */}
+        <section className="tab-panel" hidden={subtab !== "model-regression"}>
+          <PlaceholderPanel
+            title="Regression"
+            intro="Linear / logistic regression directly on the workspace tables. Pick X and Y columns, get coefficients, R², residual plots — no Python needed."
+            bullets={[
+              "Univariate + multivariate linear regression",
+              "Logistic regression for binary outcomes",
+              "Diagnostic plots (residuals, QQ)",
+              "Plain-English interpretation of the coefficients",
+            ]}
+          />
+        </section>
+        <section className="tab-panel" hidden={subtab !== "model-clustering"}>
+          <PlaceholderPanel
+            title="Clustering"
+            intro="K-means and hierarchical clustering with auto-suggested k. Visualize clusters in 2-D and inspect the cluster characteristics."
+            bullets={[
+              "K-means with elbow-method k recommendation",
+              "Hierarchical clustering with dendrogram",
+              "Per-cluster summary stats",
+              "Save cluster labels back as a column",
+            ]}
+          />
+        </section>
+        <section className="tab-panel" hidden={subtab !== "model-timeseries"}>
+          <PlaceholderPanel
+            title="Time series decomposition"
+            intro="Decompose any time-indexed metric into trend / seasonality / residual. Spot anomalies, project forward, attribute change."
+            bullets={[
+              "STL / classical decomposition",
+              "Anomaly flagging on the residual",
+              "Naïve and Holt-Winters forecasts",
+              "Exportable as a chart for the dashboard",
+            ]}
+          />
+        </section>
+        <section className="tab-panel" hidden={subtab !== "model-abtest"}>
+          <PlaceholderPanel
+            title="A/B significance"
+            intro="Drop in a table with variant + outcome columns and get p-values, confidence intervals, and a plain-English readout."
+            bullets={[
+              "Two-proportion z-test for conversion",
+              "Welch's t-test for continuous metrics",
+              "Sample size + power calculator",
+              "Sequential-testing warning if you peeked",
+            ]}
+          />
+        </section>
+
+        {/* ============ DEPLOY > SCHEDULES ============ */}
+        <section className="tab-panel" hidden={subtab !== "deploy-schedules"}>
+          <div className="card">
+            <h3>
+              Scheduled re-runs <span className="badge">{schedules.length}</span>
+            </h3>
+            <div className="muted" style={{ marginBottom: 8 }}>
+              Schedules re-run a saved analysis on the latest data on a cron. Set them on
+              individual analyses under{" "}
+              <button className="link-btn" onClick={() => setSubtab("saved")}>
+                Communicate › Saved analyses
+              </button>
+              .
+            </div>
+            {schedules.length === 0 ? (
+              <div className="muted">No schedules yet.</div>
+            ) : (
+              schedules.map((s) => {
+                const a = savedAnalyses.find((x) => x.id === s.analysisId);
+                return (
+                  <div key={s.id} className="qh-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span className="qh-source">{s.cron}</span>
+                      <span style={{ flex: 1, fontWeight: 600 }}>
+                        {a?.name ?? `analysis ${s.analysisId.slice(0, 8)}`}
+                      </span>
+                      <span className="muted" style={{ fontSize: 10 }}>
+                        {s.enabled ? "enabled" : "paused"}
+                      </span>
+                    </div>
+                    <div className="muted" style={{ fontSize: 10 }}>
+                      {s.lastRunAt ? `last run ${new Date(s.lastRunAt).toLocaleString()}` : "never run"}
+                      {s.nextRunAt ? ` · next ${new Date(s.nextRunAt).toLocaleString()}` : ""}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+
+        {/* ============ DEPLOY > ALERTS ============ */}
+        <section className="tab-panel" hidden={subtab !== "deploy-alerts"}>
           <AlertsCard
             alerts={alerts}
             onCreate={createAlert}
             onDelete={deleteAlert}
             datasets={datasets}
           />
-        </section>
-
-        {/* ============ SCHEMA ============ */}
-        <section className="tab-panel" hidden={tab !== "schema"}>
-          <SchemaProfile datasets={datasets} onError={(m) => toast("err", m)} />
         </section>
       </div>
 
@@ -1484,7 +1711,7 @@ export default function Page() {
                 setWelcomeOpen(false);
                 await loadDemoData();
                 setQuestion("Which region had the highest revenue last month?");
-                setTab("ask");
+                setSubtab("ask");
               }}
             >
               Try a sample question
@@ -1494,14 +1721,19 @@ export default function Page() {
       >
         <div style={{ fontSize: 13, lineHeight: 1.55 }}>
           <p style={{ margin: "0 0 8px" }}>
-            This is an AI-assisted data analyst. You upload CSVs (or paste a Sheet/Postgres
-            URL), then ask questions in plain English — the agent runs SQL against your data
-            and writes a markdown report.
+            Digital Coworker organizes everything by the seven steps of an analyst's workflow:
+            <strong> Define → Acquire → Clean → EDA → Model → Communicate → Deploy</strong>.
+            Use the nav up top to walk through them in order, or jump anywhere with the
+            command palette.
           </p>
           <p style={{ margin: "8px 0" }}>
-            <strong>Click "Try a sample question"</strong> below to load a small demo dataset
-            and ask the agent about it. You can also use the <strong>?</strong> button at the
-            bottom-right for help anytime.
+            Press <kbd>⌘K</kbd> (or <kbd>Ctrl+K</kbd>) any time to open the command palette
+            and search for any feature. The <strong>Coach</strong> button (bottom-right) will
+            walk you through whichever step you're on — it lands in the next phase.
+          </p>
+          <p style={{ margin: "8px 0" }}>
+            Click "Try a sample question" below to load a small demo dataset and ask the
+            agent about it.
           </p>
         </div>
       </Modal>
@@ -1516,6 +1748,75 @@ export default function Page() {
           {t.text}
         </div>
       ))}
+
+      {/* ============ LOCAL AI SETUP ============ */}
+      <WebLLMSetup
+        open={localSetupOpen}
+        onClose={() => {
+          setLocalSetupOpen(false);
+          setPendingRun(null);
+        }}
+        onReady={(modelId) => {
+          setModel(`local:${modelId}`);
+          if (pendingRun) {
+            const { q, history } = pendingRun;
+            setPendingRun(null);
+            // Defer so the modal-close state settles first.
+            setTimeout(() => runAgent(q, history), 0);
+          }
+        }}
+        initialModel={
+          model.startsWith("local:") ? (model.slice("local:".length) as LocalModelId) : undefined
+        }
+      />
+
+      {/* ============ COMMAND PALETTE ============ */}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={commands}
+      />
+
+      {/* ============ COACH (WebLLM-backed, action cards) ============ */}
+      <CoachButton
+        open={coachOpen}
+        onOpenChange={setCoachOpen}
+        currentStepLabel={step.label}
+        datasetCount={datasets.length}
+        hasSavedAnalyses={savedAnalyses.length > 0}
+        modelId={
+          model.startsWith("local:") ? (model.slice("local:".length) as LocalModelId) : null
+        }
+        handlers={{
+          onRequestModelSetup: () => setLocalSetupOpen(true),
+          onAction: (a) => {
+            switch (a.kind) {
+              case "go_to_step":
+                handleSelectStep(a.step);
+                break;
+              case "go_to_subtab":
+                setSubtab(a.subtab);
+                break;
+              case "load_demo":
+                loadDemoData();
+                break;
+              case "open_palette":
+                setPaletteOpen(true);
+                break;
+              case "open_import":
+                setImportDialogOpen(true);
+                break;
+              case "new_conversation":
+                newConversation();
+                break;
+              case "ask_ai":
+                setQuestion(a.question);
+                setSubtab("ask");
+                break;
+            }
+          },
+        }}
+      />
 
       {/* ============ CHATBOT FAB + PANEL ============ */}
       <ChatBot model={model} />

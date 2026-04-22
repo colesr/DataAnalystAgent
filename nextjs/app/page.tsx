@@ -141,7 +141,7 @@ export default function Page() {
   const [sqlRunning, setSqlRunning] = useState(false);
 
   // Agent / Ask
-  const [model, setModel] = useState<string>("local:Hermes-3-Llama-3.2-3B-q4f32_1-MLC");
+  const [model, setModel] = useState<string>("local:Hermes-2-Pro-Mistral-7B-q4f16_1-MLC");
   const [localSetupOpen, setLocalSetupOpen] = useState(false);
   const [pendingRun, setPendingRun] = useState<{ q: string; history: ConvTurn[] } | null>(null);
   // Hydrate the model selection from localStorage on mount (avoids SSR mismatch).

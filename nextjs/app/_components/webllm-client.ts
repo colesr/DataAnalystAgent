@@ -12,9 +12,9 @@
 import type { ChatCompletionMessageParam, MLCEngine } from "@mlc-ai/web-llm";
 
 export type LocalModelId =
-  | "Llama-3.2-3B-Instruct-q4f32_1-MLC"
-  | "Hermes-3-Llama-3.2-3B-q4f32_1-MLC"
-  | "Llama-3.1-8B-Instruct-q4f32_1-MLC";
+  | "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC"
+  | "Hermes-3-Llama-3.1-8B-q4f16_1-MLC"
+  | "Hermes-3-Llama-3.1-8B-q4f32_1-MLC";
 
 export type LocalModelInfo = {
   id: LocalModelId;
@@ -23,29 +23,33 @@ export type LocalModelInfo = {
   notes: string;
 };
 
+// Only models that support OpenAI-style function calling are listed here —
+// both the data-analysis agent and the Coach rely on tool calls. WebLLM's
+// "tools" parameter throws on any model not in this whitelist, so anything
+// smaller than ~7B without function-calling fine-tuning is unusable.
 export const LOCAL_MODELS: LocalModelInfo[] = [
   {
-    id: "Llama-3.2-3B-Instruct-q4f32_1-MLC",
-    label: "Llama 3.2 3B — fast",
-    approxSizeGb: 1.7,
-    notes: "Smallest download. Best for follow-ups and the coach.",
+    id: "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC",
+    label: "Hermes 2 Pro (Mistral 7B) — smallest",
+    approxSizeGb: 4.0,
+    notes: "Smallest function-calling-capable model. Fastest first download.",
   },
   {
-    id: "Hermes-3-Llama-3.2-3B-q4f32_1-MLC",
-    label: "Hermes 3 (3B) — best tool use",
-    approxSizeGb: 1.8,
-    notes: "Tuned for function calling. Recommended for SQL agent.",
+    id: "Hermes-3-Llama-3.1-8B-q4f16_1-MLC",
+    label: "Hermes 3 (Llama 3.1 8B, 16-bit) — balanced",
+    approxSizeGb: 4.7,
+    notes: "Better quality than Mistral 7B, slightly larger.",
   },
   {
-    id: "Llama-3.1-8B-Instruct-q4f32_1-MLC",
-    label: "Llama 3.1 8B — best quality",
-    approxSizeGb: 4.6,
-    notes: "Highest quality, slowest first download.",
+    id: "Hermes-3-Llama-3.1-8B-q4f32_1-MLC",
+    label: "Hermes 3 (Llama 3.1 8B, 32-bit) — best",
+    approxSizeGb: 5.7,
+    notes: "Highest quality, biggest download.",
   },
 ];
 
 export const DEFAULT_LOCAL_MODEL: LocalModelId =
-  "Hermes-3-Llama-3.2-3B-q4f32_1-MLC";
+  "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC";
 
 export type LoadProgress = {
   /** 0..1 if known, otherwise undefined for indeterminate stages. */

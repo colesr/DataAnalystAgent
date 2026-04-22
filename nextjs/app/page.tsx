@@ -16,7 +16,6 @@ import { SchemaProfile } from "./_components/SchemaProfile";
 import { ToolsPanel } from "./_components/ToolsPanel";
 import { ToolsPanelExtra } from "./_components/ToolsPanelExtra";
 import {
-  PlaceholderPanel,
   StepHero,
   StepNav,
   SubTabNav,
@@ -34,6 +33,20 @@ import {
   type LocalModelId,
 } from "./_components/webllm-client";
 import type { ConvTurn } from "@/lib/agent/types";
+import { FeatureCatalog, type CatalogAction } from "./_components/FeatureCatalog";
+import { EdaAutoSummary } from "./_components/EdaAutoSummary";
+import { EdaCorrelations } from "./_components/EdaCorrelations";
+import { EdaInsights } from "./_components/EdaInsights";
+import { ModelRegression } from "./_components/ModelRegression";
+import { ModelClustering } from "./_components/ModelClustering";
+import { ModelTimeSeries } from "./_components/ModelTimeSeries";
+import { ModelABTest } from "./_components/ModelABTest";
+import { DefineBrief } from "./_components/DefineBrief";
+import { DefineQuestions } from "./_components/DefineQuestions";
+import { DefineMetrics } from "./_components/DefineMetrics";
+import { CleanMissingHeatmap } from "./_components/CleanMissingHeatmap";
+import { CleanFuzzyDedupe } from "./_components/CleanFuzzyDedupe";
+import { CleanRegexExtractor } from "./_components/CleanRegexExtractor";
 
 type DatasetMeta = {
   id: string;
@@ -113,6 +126,7 @@ export default function Page() {
   const [subtab, setSubtab] = useState<SubTabId>("data");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const step = useMemo(() => stepForSubtab(subtab), [subtab]);
   const handleSelectStep = useCallback((id: StepId) => {
     const s = findStep(id);
@@ -776,6 +790,7 @@ export default function Page() {
         openCoach: () => setCoachOpen(true),
         newConversation,
         openHelp: () => setWelcomeOpen(true),
+        openCatalog: () => setCatalogOpen(true),
       }),
     [handleSelectStep, loadDemoData, newConversation]
   );
@@ -819,6 +834,14 @@ export default function Page() {
         <header>
           <h1>Digital Data Analyst</h1>
           <div className="header-actions">
+            <button
+              type="button"
+              className="feature-catalog-btn"
+              title="Browse all features"
+              onClick={() => setCatalogOpen(true)}
+            >
+              ⚏ All features
+            </button>
             <button
               className="icon-btn"
               title="Toggle theme"
@@ -1266,6 +1289,9 @@ export default function Page() {
         {/* ============ CLEAN ============ */}
         <section className="tab-panel" hidden={subtab !== "clean"}>
           <CleanPanel datasets={datasets} onChanged={fetchDatasets} toast={toast} />
+          <CleanMissingHeatmap datasets={datasets} />
+          <CleanFuzzyDedupe datasets={datasets} />
+          <CleanRegexExtractor datasets={datasets} onAdded={fetchDatasets} />
         </section>
 
         {/* ============ PIVOT ============ */}
@@ -1502,90 +1528,40 @@ export default function Page() {
           <SchemaProfile datasets={datasets} onError={(m) => toast("err", m)} />
         </section>
 
-        {/* ============ DEFINE (placeholders) ============ */}
-        <section className="tab-panel" hidden={subtab !== "define-brief"}>
-          <PlaceholderPanel
-            title="Project brief"
-            intro="A guided wizard for capturing the business question, who's asking, and what the answer will be used for. Borrows from the standard analyst intake template."
-            bullets={[
-              "One-page brief auto-generated from a few prompts",
-              "Stakeholder + decision-maker capture",
-              "'Done looks like…' framing forced upfront",
-              "Saved with the project — coach refers back to it on every step",
-            ]}
-          />
+        {/* ============ EDA: AUTO-FEATURES ============ */}
+        <section className="tab-panel" hidden={subtab !== "eda-summary"}>
+          <EdaAutoSummary datasets={datasets} />
         </section>
-        <section className="tab-panel" hidden={subtab !== "define-questions"}>
-          <PlaceholderPanel
-            title="Stakeholder questions"
-            intro="A library of clarifying questions to ask before scoping the work. Pick the ones relevant to your situation, send the list to your stakeholder."
-            bullets={[
-              "200+ pre-written questions organized by analysis type",
-              "Auto-pruned by the brief you wrote",
-              "Exportable as a doc / email",
-            ]}
-          />
+        <section className="tab-panel" hidden={subtab !== "eda-correlations"}>
+          <EdaCorrelations datasets={datasets} />
         </section>
-        <section className="tab-panel" hidden={subtab !== "define-metrics"}>
-          <PlaceholderPanel
-            title="Success metrics library"
-            intro="Browse common success metrics by industry / function (retention, NPS, ARPU, lift, conversion, etc.) and copy the formal definitions into your glossary."
-            bullets={[
-              "Searchable metric catalog with formulas",
-              "One-click 'add to project glossary'",
-              "Recommended metrics based on your brief",
-            ]}
-          />
+        <section className="tab-panel" hidden={subtab !== "eda-insights"}>
+          <EdaInsights datasets={datasets} />
         </section>
 
-        {/* ============ MODEL (placeholders) ============ */}
+        {/* ============ DEFINE ============ */}
+        <section className="tab-panel" hidden={subtab !== "define-brief"}>
+          <DefineBrief />
+        </section>
+        <section className="tab-panel" hidden={subtab !== "define-questions"}>
+          <DefineQuestions />
+        </section>
+        <section className="tab-panel" hidden={subtab !== "define-metrics"}>
+          <DefineMetrics />
+        </section>
+
+        {/* ============ MODEL ============ */}
         <section className="tab-panel" hidden={subtab !== "model-regression"}>
-          <PlaceholderPanel
-            title="Regression"
-            intro="Linear / logistic regression directly on the workspace tables. Pick X and Y columns, get coefficients, R², residual plots — no Python needed."
-            bullets={[
-              "Univariate + multivariate linear regression",
-              "Logistic regression for binary outcomes",
-              "Diagnostic plots (residuals, QQ)",
-              "Plain-English interpretation of the coefficients",
-            ]}
-          />
+          <ModelRegression datasets={datasets} />
         </section>
         <section className="tab-panel" hidden={subtab !== "model-clustering"}>
-          <PlaceholderPanel
-            title="Clustering"
-            intro="K-means and hierarchical clustering with auto-suggested k. Visualize clusters in 2-D and inspect the cluster characteristics."
-            bullets={[
-              "K-means with elbow-method k recommendation",
-              "Hierarchical clustering with dendrogram",
-              "Per-cluster summary stats",
-              "Save cluster labels back as a column",
-            ]}
-          />
+          <ModelClustering datasets={datasets} />
         </section>
         <section className="tab-panel" hidden={subtab !== "model-timeseries"}>
-          <PlaceholderPanel
-            title="Time series decomposition"
-            intro="Decompose any time-indexed metric into trend / seasonality / residual. Spot anomalies, project forward, attribute change."
-            bullets={[
-              "STL / classical decomposition",
-              "Anomaly flagging on the residual",
-              "Naïve and Holt-Winters forecasts",
-              "Exportable as a chart for the dashboard",
-            ]}
-          />
+          <ModelTimeSeries datasets={datasets} />
         </section>
         <section className="tab-panel" hidden={subtab !== "model-abtest"}>
-          <PlaceholderPanel
-            title="A/B significance"
-            intro="Drop in a table with variant + outcome columns and get p-values, confidence intervals, and a plain-English readout."
-            bullets={[
-              "Two-proportion z-test for conversion",
-              "Welch's t-test for continuous metrics",
-              "Sample size + power calculator",
-              "Sequential-testing warning if you peeked",
-            ]}
-          />
+          <ModelABTest datasets={datasets} />
         </section>
 
         {/* ============ DEPLOY > SCHEDULES ============ */}
@@ -1768,6 +1744,34 @@ export default function Page() {
         initialModel={
           model.startsWith("local:") ? (model.slice("local:".length) as LocalModelId) : undefined
         }
+      />
+
+      {/* ============ ALL FEATURES CATALOG ============ */}
+      <FeatureCatalog
+        open={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+        onAction={(a: CatalogAction) => {
+          switch (a.kind) {
+            case "go_to_step":
+              handleSelectStep(a.step);
+              break;
+            case "go_to_subtab":
+              setSubtab(a.subtab);
+              break;
+            case "open_import":
+              setImportDialogOpen(true);
+              break;
+            case "load_demo":
+              loadDemoData();
+              break;
+            case "open_palette":
+              setPaletteOpen(true);
+              break;
+            case "open_coach":
+              setCoachOpen(true);
+              break;
+          }
+        }}
       />
 
       {/* ============ COMMAND PALETTE ============ */}

@@ -26,8 +26,9 @@ export function buildCommands(opts: {
   openCoach: () => void;
   newConversation: () => void;
   openHelp: () => void;
+  openCatalog: () => void;
 }): Command[] {
-  const { goto, selectStep, openImport, loadDemo, toggleTheme, openCoach, newConversation, openHelp } = opts;
+  const { goto, selectStep, openImport, loadDemo, toggleTheme, openCoach, newConversation, openHelp, openCatalog } = opts;
   return [
     // Workflow steps
     { id: "step-define", label: "Go to: Define", group: "Steps", keywords: "1 brief problem", action: () => selectStep("define") },
@@ -42,6 +43,9 @@ export function buildCommands(opts: {
     { id: "go-schema", label: "Open: Schema profile", group: "EDA", keywords: "columns types stats", action: () => goto("schema") },
     { id: "go-pivot", label: "Open: Pivot", group: "EDA", keywords: "group by aggregate", action: () => goto("pivot") },
     { id: "go-tools", label: "Open: Tool cards", group: "EDA", keywords: "28 tools", action: () => goto("tools") },
+    { id: "go-summary", label: "Open: Auto-summary", group: "EDA", keywords: "stats describe", action: () => goto("eda-summary") },
+    { id: "go-corr", label: "Open: Correlation matrix", group: "EDA", keywords: "pearson relationship", action: () => goto("eda-correlations") },
+    { id: "go-insights", label: "Open: Interesting facts", group: "EDA", keywords: "anomalies findings", action: () => goto("eda-insights") },
     { id: "go-data", label: "Open: Datasets browser", group: "Acquire", keywords: "rows table", action: () => goto("data") },
     { id: "go-clean", label: "Open: Clean tools", group: "Clean", keywords: "dedupe parse drop", action: () => goto("clean") },
     { id: "go-dashboard", label: "Open: Dashboards", group: "Communicate", keywords: "chart tile", action: () => goto("dashboard") },
@@ -57,6 +61,7 @@ export function buildCommands(opts: {
     { id: "act-coach", label: "Open Coach", group: "Actions", keywords: "help guide tutorial walkthrough", action: openCoach },
     { id: "act-theme", label: "Toggle dark/light theme", group: "Actions", action: toggleTheme },
     { id: "act-help", label: "Show welcome / help", group: "Actions", action: openHelp },
+    { id: "act-catalog", label: "Browse all features", group: "Actions", keywords: "catalog index list everything", action: openCatalog },
   ];
 }
 

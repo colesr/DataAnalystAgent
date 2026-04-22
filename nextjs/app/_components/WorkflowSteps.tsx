@@ -8,6 +8,9 @@ export type SubTabId =
   | "clean"
   | "ask"
   | "schema"
+  | "eda-summary"
+  | "eda-correlations"
+  | "eda-insights"
   | "pivot"
   | "tools"
   | "model-regression"
@@ -83,6 +86,9 @@ export const STEPS: StepDef[] = [
     subtabs: [
       { id: "ask", label: "Ask AI" },
       { id: "schema", label: "Schema profile" },
+      { id: "eda-summary", label: "Auto-summary" },
+      { id: "eda-correlations", label: "Correlations" },
+      { id: "eda-insights", label: "Insights" },
       { id: "pivot", label: "Pivot" },
       { id: "tools", label: "Tool cards" },
     ],

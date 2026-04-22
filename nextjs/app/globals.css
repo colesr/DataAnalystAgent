@@ -743,22 +743,23 @@ details[open] summary { margin-bottom: 8px; }
   border-radius: 6px; font-size: 12px;
 }
 
-/* Chatbot */
+/* Chatbot — "AI Council" pill FAB */
 .bot-fab {
   position: fixed; bottom: 22px; right: 22px;
-  width: 50px; height: 50px; border-radius: 50%;
+  height: 40px; padding: 0 16px; border-radius: 999px;
   background: var(--accent); color: #0a0a0a; border: 0;
-  font-size: 22px; font-weight: 700; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
   z-index: 300;
   box-shadow: 0 8px 24px rgba(167, 139, 250, 0.5);
-  display: grid; place-items: center;
+  display: inline-flex; align-items: center; gap: 6px;
   transition: transform .15s, box-shadow .15s;
 }
 .bot-fab:hover {
-  transform: scale(1.08);
+  transform: translateY(-1px);
   box-shadow: 0 10px 28px rgba(167, 139, 250, 0.6);
 }
 .bot-fab.active { background: var(--text); color: var(--bg); }
+.bot-fab .bot-fab-label { font-weight: 600; letter-spacing: 0.01em; }
 .bot-panel {
   position: fixed; bottom: 84px; right: 22px;
   width: 380px; max-width: calc(100vw - 44px);
@@ -1081,6 +1082,125 @@ nav.sub-tabs button .soon {
 /* Light-theme overrides */
 [data-theme="light"] .palette-backdrop { background: rgba(0, 0, 0, 0.25); }
 [data-theme="light"] .coach-fab { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12); }
+
+/* ===== Phase 15e: feature catalog modal ===== */
+.catalog-scroll { max-height: 60vh; overflow-y: auto; padding-right: 4px; }
+.catalog-group { margin-bottom: 16px; }
+.catalog-group-label {
+  margin: 0 0 8px; font-size: 10px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.catalog-grid {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+.catalog-card {
+  text-align: left; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 10px 12px; cursor: pointer; font: inherit;
+  transition: all .12s; color: var(--text);
+}
+.catalog-card:hover { border-color: var(--accent); background: var(--accent-soft); }
+.catalog-card-name { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.catalog-card-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+.feature-catalog-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 5px 9px; font: inherit; font-size: 11px; cursor: pointer;
+  transition: all .12s;
+}
+.feature-catalog-btn:hover { color: var(--text); border-color: var(--accent); }
+
+/* ===== Phase 15e: EDA tables ===== */
+.eda-summary-table, .eda-corr-table {
+  width: 100%; border-collapse: collapse; font-size: 11px;
+}
+.eda-summary-table th, .eda-summary-table td,
+.eda-corr-table th, .eda-corr-table td {
+  border: 1px solid var(--border); padding: 6px 8px; text-align: left;
+}
+.eda-summary-table th, .eda-corr-table th {
+  background: var(--bg-3); color: var(--muted); font-weight: 600;
+  text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em;
+}
+.eda-corr-table td.corr-cell { text-align: center; font-variant-numeric: tabular-nums; }
+
+/* ===== Phase 15e: insight cards ===== */
+.insight-card {
+  background: var(--bg); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px; padding: 10px 12px; margin-bottom: 8px;
+}
+.insight-card.warn { border-left-color: var(--warn); }
+.insight-card.alert { border-left-color: var(--err); }
+.insight-card-title { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.insight-card-desc { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+/* ===== Phase 15e: model step ===== */
+.model-section { margin-bottom: 12px; }
+.model-row {
+  display: grid; gap: 8px; grid-template-columns: 1fr 1fr; margin-bottom: 8px;
+}
+.model-result {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 12px; margin-top: 8px;
+  font-size: 12px; line-height: 1.6;
+}
+.model-result h4 {
+  margin: 0 0 8px; font-size: 11px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.model-stat-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 4px 0; border-bottom: 1px solid var(--border);
+}
+.model-stat-row:last-child { border-bottom: 0; }
+.model-stat-row .label { color: var(--muted); }
+.model-stat-row .value { font-variant-numeric: tabular-nums; font-weight: 500; }
+
+/* ===== Phase 15e: define wizard ===== */
+.define-list { display: flex; flex-direction: column; gap: 6px; }
+.define-list-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg); cursor: pointer; transition: all .12s;
+  text-align: left;
+}
+.define-list-item:hover { border-color: var(--accent); }
+.define-list-item.selected { background: var(--accent-soft); border-color: var(--accent); }
+.define-list-item input[type="checkbox"] { width: auto; margin-top: 2px; flex: 0 0 auto; }
+.define-list-item-name { font-size: 12px; font-weight: 600; }
+.define-list-item-desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.define-category {
+  display: inline-block; font-size: 10px;
+  background: var(--bg-3); color: var(--muted);
+  padding: 1px 6px; border-radius: 3px; margin-right: 6px;
+}
+
+/* ===== Phase 15e: missing-value heatmap ===== */
+.missing-heatmap {
+  display: grid; gap: 1px; margin-top: 12px;
+  grid-template-columns: 140px 1fr;
+}
+.missing-row { display: contents; }
+.missing-label {
+  font-size: 11px; padding: 4px 6px; background: var(--bg-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.missing-bar {
+  background: var(--bg-3); position: relative; height: 18px;
+}
+.missing-bar-fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: linear-gradient(90deg, var(--accent), var(--err));
+  transition: width .2s;
+}
+.missing-bar-pct {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  font-size: 10px; color: var(--text); font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
 
 /* ===== Phase 15b: WebLLM setup ===== */
 .local-model-row {

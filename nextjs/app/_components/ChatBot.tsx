@@ -79,15 +79,15 @@ export function ChatBot({ model }: { model: string }) {
     <>
       <button
         className={`bot-fab ${open ? "active" : ""}`}
-        title="Help"
+        title="AI Council — chat helper"
         onClick={() => setOpen((v) => !v)}
       >
-        ?
+        <span className="bot-fab-label">AI Council</span>
       </button>
       {open && (
         <div className="bot-panel">
           <div className="bot-header">
-            <span className="bot-title">Help · Digital Data Analyst</span>
+            <span className="bot-title">AI Council</span>
             <button className="close" onClick={() => setOpen(false)}>
               ×
             </button>

@@ -15,7 +15,9 @@ const globalForPostgres = global as unknown as { postgres?: ReturnType<typeof po
 const client =
   globalForPostgres.postgres ??
   postgres(connectionString ?? "postgres://invalid", {
-    max: 10,
+    // Vercel serverless functions are short-lived; keep the pool small so we
+    // don't blow past Neon's connection limits during traffic spikes.
+    max: 5,
     idle_timeout: 20,
     connect_timeout: 10,
   });

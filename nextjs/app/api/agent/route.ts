@@ -7,7 +7,10 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
 import type { ConvTurn } from "@/lib/agent/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+// Vercel Hobby caps function execution at 60s. The agent loop now runs in
+// the browser by default (WebLLM); this server route is the cloud-BYOK
+// fallback and stays well within the limit for typical 4-6 turn analyses.
+export const maxDuration = 60;
 
 const RATE_LIMIT_PER_MIN = parseInt(process.env.AGENT_RATE_LIMIT_PER_MIN ?? "10", 10);
 

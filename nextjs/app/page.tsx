@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuthMenu } from "./_components/AuthMenu";
-import { ChatBot } from "./_components/ChatBot";
 import { CleanPanel } from "./_components/CleanPanel";
+import { CouncilRoom } from "./_components/CouncilRoom";
 import { CoachButton } from "./_components/CoachButton";
 import { CommandPalette, buildCommands } from "./_components/CommandPalette";
 import { DashboardPanel } from "./_components/DashboardPanel";
@@ -127,6 +127,8 @@ export default function Page() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [councilOpen, setCouncilOpen] = useState(false);
+  const [boardroomOpen, setBoardroomOpen] = useState(false);
   const step = useMemo(() => stepForSubtab(subtab), [subtab]);
   const handleSelectStep = useCallback((id: StepId) => {
     const s = findStep(id);
@@ -834,6 +836,22 @@ export default function Page() {
         <header>
           <h1>Digital Data Analyst</h1>
           <div className="header-actions">
+            <button
+              type="button"
+              className="icon-btn"
+              title="AI Council — communication experts chatroom"
+              onClick={() => setCouncilOpen(true)}
+            >
+              🏛️
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              title="AI Council Boardroom — data & math experts chatroom"
+              onClick={() => setBoardroomOpen(true)}
+            >
+              📊
+            </button>
             <button
               type="button"
               className="feature-catalog-btn"
@@ -1822,8 +1840,25 @@ export default function Page() {
         }}
       />
 
-      {/* ============ CHATBOT FAB + PANEL ============ */}
-      <ChatBot model={model} />
+      {/* ============ AI COUNCIL ROOMS ============ */}
+      <CouncilRoom
+        open={councilOpen}
+        onClose={() => setCouncilOpen(false)}
+        kind="council"
+        modelId={
+          model.startsWith("local:") ? (model.slice("local:".length) as LocalModelId) : null
+        }
+        onRequestModelSetup={() => setLocalSetupOpen(true)}
+      />
+      <CouncilRoom
+        open={boardroomOpen}
+        onClose={() => setBoardroomOpen(false)}
+        kind="boardroom"
+        modelId={
+          model.startsWith("local:") ? (model.slice("local:".length) as LocalModelId) : null
+        }
+        onRequestModelSetup={() => setLocalSetupOpen(true)}
+      />
     </>
   );
 }

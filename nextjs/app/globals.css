@@ -743,23 +743,7 @@ details[open] summary { margin-bottom: 8px; }
   border-radius: 6px; font-size: 12px;
 }
 
-/* Chatbot — "AI Council" pill FAB */
-.bot-fab {
-  position: fixed; bottom: 22px; right: 22px;
-  height: 40px; padding: 0 16px; border-radius: 999px;
-  background: var(--accent); color: #0a0a0a; border: 0;
-  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
-  z-index: 300;
-  box-shadow: 0 8px 24px rgba(167, 139, 250, 0.5);
-  display: inline-flex; align-items: center; gap: 6px;
-  transition: transform .15s, box-shadow .15s;
-}
-.bot-fab:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 28px rgba(167, 139, 250, 0.6);
-}
-.bot-fab.active { background: var(--text); color: var(--bg); }
-.bot-fab .bot-fab-label { font-weight: 600; letter-spacing: 0.01em; }
+/* Legacy ChatBot styles removed in 15f — replaced by CouncilRoom (top-right). */
 .bot-panel {
   position: fixed; bottom: 84px; right: 22px;
   width: 380px; max-width: calc(100vw - 44px);
@@ -1082,6 +1066,139 @@ nav.sub-tabs button .soon {
 /* Light-theme overrides */
 [data-theme="light"] .palette-backdrop { background: rgba(0, 0, 0, 0.25); }
 [data-theme="light"] .coach-fab { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12); }
+
+/* ===== Phase 15f: AI Council chatroom ===== */
+.council-room {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 96vw);
+  background: var(--bg-2); border-left: 1px solid var(--border-strong);
+  z-index: 95; display: flex; flex-direction: column;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
+  animation: coachIn .18s ease;
+}
+.council-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.council-title { font-size: 13px; font-weight: 600; }
+.council-sub { font-size: 11px; }
+
+.council-manage {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  background: var(--bg-3); max-height: 240px; overflow-y: auto;
+  flex: 0 0 auto;
+}
+.bot-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0;
+}
+.bot-row input[type="checkbox"] { width: auto; flex: 0 0 auto; }
+.bot-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  display: inline-grid; place-items: center;
+  font-size: 13px; flex: 0 0 auto;
+  color: #0a0a0a;
+}
+.bot-avatar.tiny { width: 18px; height: 18px; font-size: 10px; }
+
+.council-body {
+  flex: 1; overflow-y: auto; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.council-empty p { font-size: 12px; line-height: 1.55; margin: 0 0 8px; }
+.council-empty kbd {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10px;
+  background: var(--bg-3); border: 1px solid var(--border); padding: 1px 5px; border-radius: 3px;
+}
+
+.council-msg {
+  display: flex; gap: 8px;
+  align-items: flex-start;
+}
+.council-msg.user { justify-content: flex-end; }
+.council-msg.user .council-msg-body { align-items: flex-end; }
+.council-msg-body { display: flex; flex-direction: column; gap: 4px; max-width: 84%; min-width: 0; }
+.council-msg-author { font-size: 11px; font-weight: 600; color: var(--muted); }
+.council-msg-bubble {
+  padding: 8px 11px; border-radius: 8px;
+  font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; word-wrap: break-word;
+}
+.council-msg.user .council-msg-bubble {
+  background: var(--accent); color: #0a0a0a;
+}
+.council-msg.bot .council-msg-bubble {
+  background: var(--bg-3); color: var(--text); border: 1px solid var(--border);
+}
+.council-reply {
+  margin-left: 34px; margin-top: -4px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+.council-typing { font-size: 11px; padding: 4px 0; opacity: 0.8; }
+
+.council-msg-actions { display: flex; gap: 4px; padding-top: 2px; }
+.reaction-btn {
+  background: transparent; border: 1px solid transparent;
+  padding: 2px 6px; border-radius: 999px;
+  cursor: pointer; font: inherit; font-size: 11px;
+  display: inline-flex; align-items: center; gap: 3px;
+  color: var(--muted);
+  transition: transform .12s, border-color .12s, background .12s;
+}
+.reaction-btn:hover {
+  border-color: var(--border);
+  background: var(--bg-3);
+  transform: scale(1.08);
+}
+.reaction-btn:active .reaction-emoji { animation: reactPop .3s ease; display: inline-block; }
+.reaction-emoji { font-size: 13px; line-height: 1; }
+.reaction-count { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+@keyframes reactPop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.5) rotate(-10deg); }
+  100% { transform: scale(1); }
+}
+
+.council-footer {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  flex: 0 0 auto;
+  background: var(--bg-2);
+  position: relative;
+}
+.council-input-row { display: flex; gap: 6px; align-items: flex-end; }
+.council-input-row textarea {
+  font-size: 12px; resize: none; min-height: 40px; flex: 1;
+}
+.council-input-row button { flex: 0 0 auto; margin-top: 0; }
+
+.mention-list {
+  position: absolute; bottom: calc(100% + 4px); left: 12px; right: 12px;
+  background: var(--bg-2); border: 1px solid var(--border-strong);
+  border-radius: 6px; max-height: 200px; overflow-y: auto;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1;
+}
+.mention-pick {
+  width: 100%; display: flex; align-items: center; gap: 6px;
+  background: transparent; border: 0; padding: 6px 10px;
+  font: inherit; font-size: 12px; color: var(--text);
+  cursor: pointer; text-align: left;
+}
+.mention-pick:hover { background: var(--accent-soft); }
+
+.bot-emoji-pick, .bot-color-pick {
+  width: 28px; height: 28px; padding: 0;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg); cursor: pointer; font-size: 14px;
+  display: inline-grid; place-items: center;
+  transition: all .12s;
+}
+.bot-emoji-pick:hover, .bot-color-pick:hover { border-color: var(--accent); }
+.bot-emoji-pick.active, .bot-color-pick.active {
+  border-color: var(--accent); border-width: 2px;
+}
 
 /* ===== Phase 15e: feature catalog modal ===== */
 .catalog-scroll { max-height: 60vh; overflow-y: auto; padding-right: 4px; }

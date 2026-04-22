@@ -101,7 +101,9 @@ function buildContextMessages(
   history: CouncilMessage[],
   systemPrompt: string
 ): ChatCompletionMessageParam[] {
-  const recent = history.slice(-HISTORY_FOR_BOT);
+  // Drop any messages with empty text — would round-trip as `{role: ..., content: ""}`
+  // and trip WebLLM's "Last message should be from user or tool" validation.
+  const recent = history.filter((m) => m.text && m.text.trim().length > 0).slice(-HISTORY_FOR_BOT);
   const msgs: ChatCompletionMessageParam[] = [{ role: "system", content: systemPrompt }];
   for (const m of recent) {
     if (m.authorId === "user") {
@@ -113,6 +115,11 @@ function buildContextMessages(
       // bot reads it as part of the room's history.
       msgs.push({ role: "user", content: `[${m.authorName} said] ${m.text}` });
     }
+  }
+  // Belt-and-suspenders: WebLLM requires the last message to be user or tool. If the
+  // tail somehow ended up assistant, drop trailing assistants until that's true.
+  while (msgs.length > 1 && msgs[msgs.length - 1].role === "assistant") {
+    msgs.pop();
   }
   return msgs;
 }
@@ -176,7 +183,6 @@ export async function* runCouncilTurn(
     }
     yield { kind: "bot_starting", bot };
     const messageId = `bot-${bot.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    // Reserve a streaming slot in the history so the next bot can see the in-progress message.
     const slot: CouncilMessage = {
       id: messageId,
       authorId: bot.id,
@@ -188,7 +194,9 @@ export async function* runCouncilTurn(
       createdAt: Date.now(),
     };
     opts.appendMessage(slot);
-    history = [...history, slot];
+    // IMPORTANT: do NOT push the empty slot into local `history` yet — buildContextMessages
+    // would emit a `{role: "assistant", content: ""}` tail that WebLLM rejects.
+    // We append the finalized message after the response completes.
 
     let finalText = "";
     try {
@@ -202,9 +210,8 @@ export async function* runCouncilTurn(
       finalText = `(error: ${e?.message ?? e})`;
     }
     opts.updateMessage(messageId, finalText);
-    // Reflect the finalized text in the local history so subsequent bots see it.
-    const idx = history.findIndex((m) => m.id === messageId);
-    if (idx >= 0) history[idx] = { ...history[idx], text: finalText };
+    // Now record the completed message into local history so subsequent bots see it.
+    history = [...history, { ...slot, text: finalText }];
     yield { kind: "bot_done", botId: bot.id, messageId };
   }
 
@@ -231,12 +238,11 @@ export async function* runCouncilTurn(
         createdAt: Date.now(),
       };
       opts.appendMessage(slot);
-      history = [...history, slot];
-      // Add a tiny instruction nudge so the reaction is short and conversational.
+      // Build the bot's prompt context from the existing history (no empty slot).
       const reactionPrompt = `${reactor.systemPrompt}
 
 You are jumping into a live conversation as a quick reaction to ${targetMsg.authorName}'s last message. Keep it to 1-2 sentences. Either ask one sharp question or add one small but meaningful comment. Don't restate what was already said. Conversational tone — this is a meeting, not a memo.`;
-      const messages = buildContextMessages(reactor, history.slice(0, -1), reactionPrompt);
+      const messages = buildContextMessages(reactor, history, reactionPrompt);
       let finalText = "";
       try {
         let acc = "";

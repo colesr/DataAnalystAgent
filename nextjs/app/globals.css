@@ -1154,6 +1154,27 @@ nav.sub-tabs button .soon {
 .reaction-btn:active .reaction-emoji { animation: reactPop .3s ease; display: inline-block; }
 .reaction-emoji { font-size: 13px; line-height: 1; }
 .reaction-count { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+.reaction-btn.vote .reaction-emoji {
+  font-size: 11px; font-weight: 700;
+  display: inline-block; line-height: 1;
+}
+.reaction-btn.vote.up:hover { color: var(--success); border-color: var(--success); }
+.reaction-btn.vote.down:hover { color: var(--err); border-color: var(--err); }
+.reaction-btn.reply { font-size: 10px; color: var(--muted); }
+.reaction-btn.reply:hover { color: var(--accent); border-color: var(--accent); }
+
+.reply-context {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 6px 10px; margin-bottom: 6px;
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-size: 11px;
+}
+.reply-context-cancel {
+  background: transparent; border: 0; color: var(--muted);
+  font-size: 16px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+.reply-context-cancel:hover { color: var(--text); }
 @keyframes reactPop {
   0% { transform: scale(1); }
   40% { transform: scale(1.5) rotate(-10deg); }

@@ -4,6 +4,20 @@ import type { ChatCompletionMessageParam } from "@mlc-ai/web-llm";
 import { chatStream, type LocalModelId } from "./webllm-client";
 import type { Bot } from "./council-bots";
 
+export type CouncilReactionKind = "heart" | "lol" | "up" | "down";
+export type CouncilReactions = {
+  heart: number;
+  lol: number;
+  up: number;
+  down: number;
+};
+export const emptyReactions = (): CouncilReactions => ({
+  heart: 0,
+  lol: 0,
+  up: 0,
+  down: 0,
+});
+
 export type CouncilMessage = {
   id: string;
   authorId: string; // bot id, or "user"
@@ -12,7 +26,7 @@ export type CouncilMessage = {
   authorColor?: string;
   text: string;
   parentId?: string; // for threaded replies
-  reactions: { heart: number; lol: number };
+  reactions: CouncilReactions;
   createdAt: number;
 };
 
@@ -26,7 +40,8 @@ export type OrchestratorEvent =
 const MAX_PRIMARY_RESPONDERS = 3;
 const HISTORY_FOR_BOT = 10; // messages of context shown to each bot
 const PER_BOT_TIMEOUT_MS = 90_000; // hard cap per bot turn — prevents runaway streams
-const MAX_TOKENS_PER_TURN = 280; // ~3-4 sentences, keeps replies snappy + bounded
+const MAX_TOKENS_PER_TURN = 180; // ~1-3 sentences, keeps the room punchy
+const MAX_TOKENS_FOLLOWUP = 100; // even tighter for chime-ins
 
 /** Parse "@FirstName" tokens in the user's text and resolve to bot ids. */
 export function parseMentions(text: string, bots: Bot[]): string[] {
@@ -179,6 +194,8 @@ export type RunCouncilTurnOptions = {
   history: CouncilMessage[];
   /** The user message just appended to history. */
   userText: string;
+  /** If the user replied to a specific message, all bot responses thread under it. */
+  threadParentId?: string;
   /** Append a finished message to the room (called for each bot reply). */
   appendMessage: (msg: CouncilMessage) => void;
   /** Update an in-progress bot message as text streams in. */
@@ -218,7 +235,8 @@ export async function* runCouncilTurn(
       authorEmoji: bot.emoji,
       authorColor: bot.color,
       text: "",
-      reactions: { heart: 0, lol: 0 },
+      parentId: opts.threadParentId,
+      reactions: emptyReactions(),
       createdAt: Date.now(),
     };
     opts.appendMessage(slot);
@@ -267,8 +285,8 @@ export async function* runCouncilTurn(
         authorEmoji: reactor.emoji,
         authorColor: reactor.color,
         text: "",
-        parentId: targetMsg.id, // threaded reply
-        reactions: { heart: 0, lol: 0 },
+        parentId: opts.threadParentId ?? targetMsg.id,
+        reactions: emptyReactions(),
         createdAt: Date.now(),
       };
       opts.appendMessage(slot);
@@ -284,7 +302,7 @@ You are jumping into a live conversation as a quick reaction to ${targetMsg.auth
         for await (const chunk of chatStream({
           messages,
           signal: dl.signal,
-          maxTokens: 160,
+          maxTokens: MAX_TOKENS_FOLLOWUP,
           temperature: 0.8,
         })) {
           if (chunk.kind === "text") {

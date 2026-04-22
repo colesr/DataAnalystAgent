@@ -12,7 +12,9 @@ import {
 import { CouncilBotEditor } from "./CouncilBotEditor";
 import {
   runCouncilTurn,
+  emptyReactions,
   type CouncilMessage,
+  type CouncilReactionKind,
 } from "./council-orchestrator";
 import { hasWebGPU, isLoaded as isLocalLoaded, type LocalModelId } from "./webllm-client";
 
@@ -42,6 +44,7 @@ export function CouncilRoom({
   const [managePanelOpen, setManagePanelOpen] = useState(false);
   const [showMentionList, setShowMentionList] = useState(false);
   const [activeBotId, setActiveBotId] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<CouncilMessage | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -82,17 +85,20 @@ export function CouncilRoom({
       return;
     }
     setError(null);
+    const threadParentId = replyingTo?.id;
     const userMsg: CouncilMessage = {
       id: `user-${Date.now()}`,
       authorId: "user",
       authorName: "You",
       text,
-      reactions: { heart: 0, lol: 0 },
+      parentId: threadParentId,
+      reactions: emptyReactions(),
       createdAt: Date.now(),
     };
     const histAfterUser = [...messages, userMsg];
     setMessages(histAfterUser);
     setInput("");
+    setReplyingTo(null);
     setRunning(true);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -104,6 +110,7 @@ export function CouncilRoom({
         enabledBots,
         history: histAfterUser,
         userText: text,
+        threadParentId,
         appendMessage: (m) => setMessages((prev) => [...prev, m]),
         updateMessage: (id, t) =>
           setMessages((prev) =>
@@ -136,13 +143,13 @@ export function CouncilRoom({
       abortRef.current = null;
       setActiveBotId(null);
     }
-  }, [input, running, modelId, enabledBots, messages, kind, onRequestModelSetup]);
+  }, [input, running, modelId, enabledBots, messages, kind, onRequestModelSetup, replyingTo]);
 
   function stop() {
     abortRef.current?.abort();
   }
 
-  function react(messageId: string, kind: "heart" | "lol") {
+  function react(messageId: string, kind: CouncilReactionKind) {
     setMessages((prev) =>
       prev.map((m) =>
         m.id === messageId
@@ -151,6 +158,10 @@ export function CouncilRoom({
       )
     );
   }
+  const onReplyClick = useCallback((m: CouncilMessage) => {
+    setReplyingTo(m);
+    inputRef.current?.focus();
+  }, []);
 
   function clearChat() {
     if (running) return;
@@ -329,6 +340,7 @@ export function CouncilRoom({
               <CouncilMessageView
                 msg={msg}
                 onReact={react}
+                onReply={onReplyClick}
                 streaming={running && msg.text === "" && msg.id.startsWith("bot-")}
               />
               {replies.map((r) => (
@@ -336,6 +348,7 @@ export function CouncilRoom({
                   <CouncilMessageView
                     msg={r}
                     onReact={react}
+                    onReply={onReplyClick}
                     streaming={running && r.text === ""}
                   />
                 </div>
@@ -352,6 +365,24 @@ export function CouncilRoom({
       </div>
 
       <footer className="council-footer">
+        {replyingTo && (
+          <div className="reply-context">
+            <span>
+              Replying to <strong>{replyingTo.authorName}</strong>:{" "}
+              <span className="muted">
+                {replyingTo.text.slice(0, 60)}
+                {replyingTo.text.length > 60 ? "…" : ""}
+              </span>
+            </span>
+            <button
+              className="reply-context-cancel"
+              onClick={() => setReplyingTo(null)}
+              aria-label="Cancel reply"
+            >
+              ×
+            </button>
+          </div>
+        )}
         {showMentionList && (
           <div className="mention-list">
             {enabledBots.map((b) => (
@@ -421,13 +452,17 @@ export function CouncilRoom({
 function CouncilMessageView({
   msg,
   onReact,
+  onReply,
   streaming,
 }: {
   msg: CouncilMessage;
-  onReact: (id: string, kind: "heart" | "lol") => void;
+  onReact: (id: string, kind: CouncilReactionKind) => void;
+  onReply: (msg: CouncilMessage) => void;
   streaming?: boolean;
 }) {
   const isUser = msg.authorId === "user";
+  // Don't show reaction/reply controls on empty in-progress bubbles.
+  const ready = msg.text.length > 0;
   return (
     <div className={`council-msg ${isUser ? "user" : "bot"}`}>
       {!isUser && (
@@ -442,26 +477,57 @@ function CouncilMessageView({
         <div className="council-msg-bubble">
           {msg.text || (streaming ? "…" : "")}
         </div>
-        <div className="council-msg-actions">
-          <button
-            type="button"
-            className="reaction-btn"
-            onClick={() => onReact(msg.id, "heart")}
-            aria-label="Like"
-          >
-            <span className="reaction-emoji">❤️</span>
-            {msg.reactions.heart > 0 && <span className="reaction-count">{msg.reactions.heart}</span>}
-          </button>
-          <button
-            type="button"
-            className="reaction-btn"
-            onClick={() => onReact(msg.id, "lol")}
-            aria-label="Funny"
-          >
-            <span className="reaction-emoji">😂</span>
-            {msg.reactions.lol > 0 && <span className="reaction-count">{msg.reactions.lol}</span>}
-          </button>
-        </div>
+        {ready && (
+          <div className="council-msg-actions">
+            <button
+              type="button"
+              className="reaction-btn vote up"
+              onClick={() => onReact(msg.id, "up")}
+              aria-label="Upvote"
+              title="Upvote — surfaces good ideas"
+            >
+              <span className="reaction-emoji">▲</span>
+              {msg.reactions.up > 0 && <span className="reaction-count">{msg.reactions.up}</span>}
+            </button>
+            <button
+              type="button"
+              className="reaction-btn vote down"
+              onClick={() => onReact(msg.id, "down")}
+              aria-label="Downvote"
+              title="Downvote — flag a weak take"
+            >
+              <span className="reaction-emoji">▼</span>
+              {msg.reactions.down > 0 && <span className="reaction-count">{msg.reactions.down}</span>}
+            </button>
+            <button
+              type="button"
+              className="reaction-btn"
+              onClick={() => onReact(msg.id, "heart")}
+              aria-label="Like"
+            >
+              <span className="reaction-emoji">❤️</span>
+              {msg.reactions.heart > 0 && <span className="reaction-count">{msg.reactions.heart}</span>}
+            </button>
+            <button
+              type="button"
+              className="reaction-btn"
+              onClick={() => onReact(msg.id, "lol")}
+              aria-label="Funny"
+            >
+              <span className="reaction-emoji">😂</span>
+              {msg.reactions.lol > 0 && <span className="reaction-count">{msg.reactions.lol}</span>}
+            </button>
+            <button
+              type="button"
+              className="reaction-btn reply"
+              onClick={() => onReply(msg)}
+              aria-label="Reply"
+              title="Reply directly to this message"
+            >
+              ↩ Reply
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

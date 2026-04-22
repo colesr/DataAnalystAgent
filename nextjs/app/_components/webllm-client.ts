@@ -121,6 +121,10 @@ export type ChatRequest = {
   messages: ChatCompletionMessageParam[];
   tools?: { name: string; description: string; input_schema: Record<string, unknown> }[];
   signal?: AbortSignal;
+  /** Hard cap on output tokens. Without one, a model that loops streams forever. */
+  maxTokens?: number;
+  /** Sampling temperature. Defaults to 0.7 for slightly more conversational variety. */
+  temperature?: number;
 };
 
 export type ChatChunk =
@@ -128,9 +132,15 @@ export type ChatChunk =
   | { kind: "tool_call"; id: string; name: string; arguments: string }
   | { kind: "done"; finishReason: string };
 
+const DEFAULT_MAX_TOKENS = 1024;
+
 /**
  * Stream a chat completion from the loaded engine. Translates web-llm's
  * OpenAI-shaped streaming chunks into a small enum the agent loop consumes.
+ *
+ * Aborts: when `signal` fires we call `engine.interruptGenerate()` so the
+ * underlying GPU work actually stops — without this the for-await keeps
+ * waiting for chunks that never come.
  */
 export async function* chatStream(req: ChatRequest): AsyncIterable<ChatChunk> {
   if (!engine) throw new Error("Engine not loaded — call ensureEngine() first");
@@ -144,11 +154,25 @@ export async function* chatStream(req: ChatRequest): AsyncIterable<ChatChunk> {
     },
   }));
 
+  // Wire abort signal to WebLLM's interrupt so the stream actually unblocks.
+  let abortHandler: (() => void) | null = null;
+  if (req.signal && engine) {
+    const eng = engine;
+    abortHandler = () => {
+      try {
+        (eng as any).interruptGenerate?.();
+      } catch {}
+    };
+    req.signal.addEventListener("abort", abortHandler, { once: true });
+  }
+
   const stream = await engine.chat.completions.create({
     messages: req.messages,
     stream: true,
     tools,
     tool_choice: tools && tools.length > 0 ? "auto" : undefined,
+    max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+    temperature: req.temperature ?? 0.7,
   } as any);
 
   // Tool calls arrive in deltas; accumulate by index.
@@ -186,6 +210,9 @@ export async function* chatStream(req: ChatRequest): AsyncIterable<ChatChunk> {
   for (const idx of Object.keys(toolBuffers)) {
     const tc = toolBuffers[Number(idx)];
     if (tc.name) yield { kind: "tool_call", id: tc.id, name: tc.name, arguments: tc.arguments };
+  }
+  if (abortHandler && req.signal) {
+    req.signal.removeEventListener("abort", abortHandler);
   }
   yield { kind: "done", finishReason };
 }

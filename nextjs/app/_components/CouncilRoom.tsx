@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  DEFAULT_BOARDROOM_BOTS,
-  DEFAULT_COUNCIL_BOTS,
   loadBots,
   loadEnabledIds,
   saveCustomBots,
@@ -18,28 +16,21 @@ import {
 } from "./council-orchestrator";
 import { hasWebGPU, isLoaded as isLocalLoaded, type LocalModelId } from "./webllm-client";
 
-const ROOM_TITLES: Record<RoomKind, string> = {
-  council: "AI Council",
-  boardroom: "AI Council Boardroom",
-};
-const ROOM_TAGLINES: Record<RoomKind, string> = {
-  council: "Communication, persuasion, and presence experts",
-  boardroom: "Statisticians, mathematicians, and analytical thinkers",
-};
+const ROOM_TITLE = "AI Council";
+const ROOM_TAGLINE = "Communication, data, and analytical experts in one room";
 
 export function CouncilRoom({
   open,
   onClose,
-  kind,
   modelId,
   onRequestModelSetup,
 }: {
   open: boolean;
   onClose: () => void;
-  kind: RoomKind;
   modelId: LocalModelId | null;
   onRequestModelSetup: () => void;
 }) {
+  const kind: RoomKind = "council";
   const [allBots, setAllBots] = useState<Bot[]>([]);
   const [enabledIds, setEnabledIds] = useState<Set<string>>(new Set());
   const [messages, setMessages] = useState<CouncilMessage[]>([]);
@@ -109,7 +100,7 @@ export function CouncilRoom({
     try {
       for await (const ev of runCouncilTurn({
         modelId,
-        roomTopic: ROOM_TITLES[kind],
+        roomTopic: ROOM_TITLE,
         enabledBots,
         history: histAfterUser,
         userText: text,
@@ -233,14 +224,12 @@ export function CouncilRoom({
 
   if (!open) return null;
   return (
-    <aside className="council-room" role="dialog" aria-label={ROOM_TITLES[kind]}>
+    <aside className="council-room" role="dialog" aria-label={ROOM_TITLE}>
       <header className="council-header">
         <div>
-          <div className="council-title">
-            {kind === "council" ? "🏛️" : "📊"} {ROOM_TITLES[kind]}
-          </div>
+          <div className="council-title">🏛️ {ROOM_TITLE}</div>
           <div className="council-sub muted">
-            {ROOM_TAGLINES[kind]} · {enabledBots.length}/{allBots.length} active
+            {ROOM_TAGLINE} · {enabledBots.length}/{allBots.length} active
           </div>
         </div>
         <div style={{ display: "flex", gap: 4 }}>
@@ -326,7 +315,7 @@ export function CouncilRoom({
         {messages.length === 0 ? (
           <div className="council-empty muted">
             <p style={{ marginTop: 0 }}>
-              Welcome to the {ROOM_TITLES[kind]}. Type a question or topic and your active
+              Welcome to the {ROOM_TITLE}. Type a question or topic and your active
               experts will weigh in. Use <kbd>@FirstName</kbd> to direct a question at a
               specific bot.
             </p>
@@ -391,7 +380,7 @@ export function CouncilRoom({
             placeholder={
               enabledBots.length === 0
                 ? "Click ☰ to enable bots first…"
-                : `Ask the ${kind === "council" ? "council" : "boardroom"}… (use @${enabledBots[0]?.shortName ?? "Name"} to target)`
+                : `Ask the council… (use @${enabledBots[0]?.shortName ?? "Name"} to target a specific expert)`
             }
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -478,5 +467,3 @@ function CouncilMessageView({
   );
 }
 
-// Re-export for page.tsx convenience
-export { DEFAULT_COUNCIL_BOTS, DEFAULT_BOARDROOM_BOTS };

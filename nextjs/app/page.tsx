@@ -128,7 +128,6 @@ export default function Page() {
   const [coachOpen, setCoachOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [councilOpen, setCouncilOpen] = useState(false);
-  const [boardroomOpen, setBoardroomOpen] = useState(false);
   const step = useMemo(() => stepForSubtab(subtab), [subtab]);
   const handleSelectStep = useCallback((id: StepId) => {
     const s = findStep(id);
@@ -838,19 +837,11 @@ export default function Page() {
           <div className="header-actions">
             <button
               type="button"
-              className="icon-btn"
-              title="AI Council — communication experts chatroom"
+              className="feature-catalog-btn"
+              title="Open the AI Council chatroom"
               onClick={() => setCouncilOpen(true)}
             >
-              🏛️
-            </button>
-            <button
-              type="button"
-              className="icon-btn"
-              title="AI Council Boardroom — data & math experts chatroom"
-              onClick={() => setBoardroomOpen(true)}
-            >
-              📊
+              🏛️ AI Council
             </button>
             <button
               type="button"
@@ -1840,20 +1831,10 @@ export default function Page() {
         }}
       />
 
-      {/* ============ AI COUNCIL ROOMS ============ */}
+      {/* ============ AI COUNCIL ============ */}
       <CouncilRoom
         open={councilOpen}
         onClose={() => setCouncilOpen(false)}
-        kind="council"
-        modelId={
-          model.startsWith("local:") ? (model.slice("local:".length) as LocalModelId) : null
-        }
-        onRequestModelSetup={() => setLocalSetupOpen(true)}
-      />
-      <CouncilRoom
-        open={boardroomOpen}
-        onClose={() => setBoardroomOpen(false)}
-        kind="boardroom"
         modelId={
           model.startsWith("local:") ? (model.slice("local:".length) as LocalModelId) : null
         }

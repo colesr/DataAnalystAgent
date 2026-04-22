@@ -25,6 +25,8 @@ export type OrchestratorEvent =
 
 const MAX_PRIMARY_RESPONDERS = 3;
 const HISTORY_FOR_BOT = 10; // messages of context shown to each bot
+const PER_BOT_TIMEOUT_MS = 90_000; // hard cap per bot turn — prevents runaway streams
+const MAX_TOKENS_PER_TURN = 280; // ~3-4 sentences, keeps replies snappy + bounded
 
 /** Parse "@FirstName" tokens in the user's text and resolve to bot ids. */
 export function parseMentions(text: string, bots: Bot[]): string[] {
@@ -135,13 +137,39 @@ async function* streamBotTurn(
   const systemPrompt = buildSystemPrompt(bot, otherBots, roomTopic);
   const messages = buildContextMessages(bot, history, systemPrompt);
   let acc = "";
-  for await (const chunk of chatStream({ messages, signal })) {
+  for await (const chunk of chatStream({
+    messages,
+    signal,
+    maxTokens: MAX_TOKENS_PER_TURN,
+    temperature: 0.75,
+  })) {
     if (chunk.kind === "text") {
       acc += chunk.delta;
       yield { delta: chunk.delta };
     }
   }
   yield { final: acc.trim() };
+}
+
+/**
+ * Combine the caller's signal with a per-turn deadline. If either fires,
+ * the returned signal aborts. This prevents a runaway WebLLM stream from
+ * stalling the whole conversation indefinitely.
+ */
+function deadlineSignal(parent?: AbortSignal, ms: number = PER_BOT_TIMEOUT_MS): {
+  signal: AbortSignal;
+  cancel: () => void;
+} {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error("Bot turn timed out — interrupting")), ms);
+  if (parent) {
+    if (parent.aborted) ctrl.abort(parent.reason);
+    else parent.addEventListener("abort", () => ctrl.abort(parent.reason), { once: true });
+  }
+  return {
+    signal: ctrl.signal,
+    cancel: () => clearTimeout(timer),
+  };
 }
 
 export type RunCouncilTurnOptions = {
@@ -199,16 +227,22 @@ export async function* runCouncilTurn(
     // We append the finalized message after the response completes.
 
     let finalText = "";
+    const dl = deadlineSignal(opts.signal);
     try {
-      for await (const chunk of streamBotTurn(bot, history, opts.enabledBots, opts.roomTopic, opts.signal)) {
+      for await (const chunk of streamBotTurn(bot, history, opts.enabledBots, opts.roomTopic, dl.signal)) {
         if (chunk.delta) {
           yield { kind: "bot_delta", botId: bot.id, delta: chunk.delta };
         }
         if (chunk.final !== undefined) finalText = chunk.final;
       }
     } catch (e: any) {
-      finalText = `(error: ${e?.message ?? e})`;
+      finalText = finalText
+        ? `${finalText}  …(cut off: ${e?.message ?? e})`
+        : `(error: ${e?.message ?? e})`;
+    } finally {
+      dl.cancel();
     }
+    if (!finalText) finalText = "(no response)";
     opts.updateMessage(messageId, finalText);
     // Now record the completed message into local history so subsequent bots see it.
     history = [...history, { ...slot, text: finalText }];
@@ -244,9 +278,15 @@ export async function* runCouncilTurn(
 You are jumping into a live conversation as a quick reaction to ${targetMsg.authorName}'s last message. Keep it to 1-2 sentences. Either ask one sharp question or add one small but meaningful comment. Don't restate what was already said. Conversational tone — this is a meeting, not a memo.`;
       const messages = buildContextMessages(reactor, history, reactionPrompt);
       let finalText = "";
+      let acc = "";
+      const dl = deadlineSignal(opts.signal);
       try {
-        let acc = "";
-        for await (const chunk of chatStream({ messages, signal: opts.signal })) {
+        for await (const chunk of chatStream({
+          messages,
+          signal: dl.signal,
+          maxTokens: 160,
+          temperature: 0.8,
+        })) {
           if (chunk.kind === "text") {
             acc += chunk.delta;
             yield { kind: "bot_delta", botId: reactor.id, delta: chunk.delta };
@@ -254,8 +294,11 @@ You are jumping into a live conversation as a quick reaction to ${targetMsg.auth
         }
         finalText = acc.trim();
       } catch (e: any) {
-        finalText = `(error: ${e?.message ?? e})`;
+        finalText = acc.trim() || `(error: ${e?.message ?? e})`;
+      } finally {
+        dl.cancel();
       }
+      if (!finalText) finalText = "(no response)";
       opts.updateMessage(messageId, finalText);
       yield { kind: "bot_done", botId: reactor.id, messageId };
     }

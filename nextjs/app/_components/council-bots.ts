@@ -15,7 +15,7 @@ export type Bot = {
   custom?: boolean;
 };
 
-export type RoomKind = "council" | "boardroom";
+export type RoomKind = "council";
 
 const COMMON_STYLE_RULES = `Stay in character. Keep your reply to 2-4 sentences usually — this is a real conversation, not a lecture. Drop in casual phrases ("look —", "honestly,", "here's the thing"). Reference what the user or another bot just said by name when natural ("Building on what Marcus mentioned...", "I'd push back on Elena's framing slightly..."). Sometimes ask a sharp follow-up question instead of answering. Avoid bullet lists and headers — talk like a person around a table.`;
 
@@ -212,41 +212,86 @@ export const DEFAULT_BOARDROOM_BOTS: Bot[] = [
   },
 ];
 
-const STORAGE_KEY = (kind: RoomKind) => `dda_council_bots_${kind}`;
-const ENABLED_KEY = (kind: RoomKind) => `dda_council_enabled_${kind}`;
+/** All built-in personas — communication experts plus data/math experts in one room. */
+export const DEFAULT_BOTS: Bot[] = [
+  ...DEFAULT_COUNCIL_BOTS,
+  ...DEFAULT_BOARDROOM_BOTS,
+];
 
-/** Read the user's persisted bot roster (custom bots + enabled defaults). */
-export function loadBots(kind: RoomKind): Bot[] {
-  if (typeof window === "undefined")
-    return kind === "council" ? DEFAULT_COUNCIL_BOTS : DEFAULT_BOARDROOM_BOTS;
-  const defaults = kind === "council" ? DEFAULT_COUNCIL_BOTS : DEFAULT_BOARDROOM_BOTS;
+const STORAGE_KEY = "dda_council_bots_v2";
+const ENABLED_KEY = "dda_council_enabled_v2";
+// Old keys from when there were two separate rooms — read once for migration.
+const LEGACY_KEYS = ["dda_council_bots_council", "dda_council_bots_boardroom"];
+const LEGACY_ENABLED_KEYS = ["dda_council_enabled_council", "dda_council_enabled_boardroom"];
+
+/** Read the user's persisted bot roster (built-ins + custom bots from legacy rooms). */
+export function loadBots(_kind: RoomKind = "council"): Bot[] {
+  if (typeof window === "undefined") return DEFAULT_BOTS;
   let custom: Bot[] = [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY(kind));
-    if (raw) custom = JSON.parse(raw);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      custom = JSON.parse(raw);
+    } else {
+      // First load after the merge — migrate any custom bots from the old per-room keys.
+      for (const legacy of LEGACY_KEYS) {
+        const raw2 = localStorage.getItem(legacy);
+        if (raw2) {
+          try {
+            const parsed = JSON.parse(raw2) as Bot[];
+            for (const b of parsed) custom.push(b);
+          } catch {}
+        }
+      }
+      if (custom.length > 0) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(custom));
+      }
+    }
   } catch {}
-  return [...defaults, ...custom];
+  // De-duplicate by id (legacy keys may overlap if user customized in both rooms).
+  const seen = new Set<string>();
+  const merged: Bot[] = [];
+  for (const b of [...DEFAULT_BOTS, ...custom]) {
+    if (seen.has(b.id)) continue;
+    seen.add(b.id);
+    merged.push(b);
+  }
+  return merged;
 }
 
-export function saveCustomBots(kind: RoomKind, bots: Bot[]) {
+export function saveCustomBots(_kind: RoomKind, bots: Bot[]) {
   try {
     const customs = bots.filter((b) => b.custom);
-    localStorage.setItem(STORAGE_KEY(kind), JSON.stringify(customs));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(customs));
   } catch {}
 }
 
-export function loadEnabledIds(kind: RoomKind, allBots: Bot[]): Set<string> {
-  if (typeof window === "undefined") return new Set(allBots.slice(0, 4).map((b) => b.id));
+export function loadEnabledIds(_kind: RoomKind, allBots: Bot[]): Set<string> {
+  if (typeof window === "undefined") return new Set(allBots.slice(0, 5).map((b) => b.id));
   try {
-    const raw = localStorage.getItem(ENABLED_KEY(kind));
+    const raw = localStorage.getItem(ENABLED_KEY);
     if (raw) return new Set(JSON.parse(raw));
+    // Migrate: union of any legacy "enabled" sets.
+    const merged = new Set<string>();
+    for (const legacy of LEGACY_ENABLED_KEYS) {
+      const raw2 = localStorage.getItem(legacy);
+      if (raw2) {
+        try {
+          for (const id of JSON.parse(raw2) as string[]) merged.add(id);
+        } catch {}
+      }
+    }
+    if (merged.size > 0) {
+      localStorage.setItem(ENABLED_KEY, JSON.stringify(Array.from(merged)));
+      return merged;
+    }
   } catch {}
-  // Default: first 4 enabled
-  return new Set(allBots.slice(0, 4).map((b) => b.id));
+  // Default: first 5 from the combined list (mix of council + boardroom).
+  return new Set(allBots.slice(0, 5).map((b) => b.id));
 }
 
-export function saveEnabledIds(kind: RoomKind, ids: Set<string>) {
+export function saveEnabledIds(_kind: RoomKind, ids: Set<string>) {
   try {
-    localStorage.setItem(ENABLED_KEY(kind), JSON.stringify(Array.from(ids)));
+    localStorage.setItem(ENABLED_KEY, JSON.stringify(Array.from(ids)));
   } catch {}
 }
